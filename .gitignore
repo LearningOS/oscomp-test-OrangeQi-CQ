@@ -1,0 +1,13 @@
+/.vscode
+/.arceos
+/.cargo
+/.idea
+.DS_Store
+*.elf
+*.bin
+apps/*/build/
+**/target/
+**/Cargo.lock
+!/vendor/**/Cargo.lock
+/.axconfig.*
+*.img
