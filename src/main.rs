@@ -25,7 +25,7 @@ fn main() {
         .unwrap_or_else(|| "Please specify the testcases list by making user_apps")
         .split(',')
         .filter(|&x| !x.is_empty());
-    println!("#### OS COMP TEST GROUP START basic-musl ####");
+    // println!("#### OS COMP TEST GROUP START basic-musl ####");
     for testcase in testcases {
         println!("Testing {}: ", testcase.split('/').next_back().unwrap());
 
@@ -44,5 +44,5 @@ fn main() {
         let exit_code = user_task.join();
         info!("User task {} exited with code: {:?}", testcase, exit_code);
     }
-    println!("#### OS COMP TEST GROUP END basic-musl ####");
+    // println!("#### OS COMP TEST GROUP END basic-musl ####");
 }
