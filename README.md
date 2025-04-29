@@ -1,39 +1,86 @@
-# oscomp kernel training
-**2025年开源操作系统训练营 oskernel训练**
+# StarryOS
 
-## 训练邀请：OS kernel设计与实现
-- [点击：创建自己的内核赛道训练repo](https://classroom.github.com/a/END-WGn8)
-- [点击：查看在线榜单](http://learningos.cn/oscomptest-grading)
+[![CI](https://github.com/arceos-org/starry-next/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/arceos-org/starry-next/actions/workflows/ci.yml)
 
-本测试涵盖riscv64、loongarch64、aarch64、x86_64四种架构测例，测例内容基本一致。
+A monolithic kernel based on [ArceOS](https://github.com/arceos-org/arceos).
 
-**注：**
-1. **基于Github Classroom，具有在线编程，在线自动评测，在线显示排行榜的特征**
-2. **没学过git/github使用、C/Rust语言、基本数据结构和算法、操作系统和与RISC-V相关的组成原理课程的同学，建议先补一下相关知识**
+## Quick Start
 
-## 内核赛道OS训练repo说明
+### 1. Install Build Dependencies
 
-> 目前支持对2025年全国大学生OS比赛内核赛道的Linux Apps测例的测试，采用形式与比赛大致相同，但是请注意评测流中的运行方式与本地starry-next基本一致，你无需修改现有starry-next的makefile配置。
+Install [cargo-binutils](https://github.com/rust-embedded/cargo-binutils) to use `rust-objcopy` and `rust-objdump` tools:
 
-目前已经支持 `basic`,`libc-test`，`busybox`, `lua`, `iozone` 相关Linux App测例，并且需要分别支持`musl`、`glibc`，测试过程无人工干预，需要由内核自动运行，所有测例文件放在镜像中，内核需要支持 `ext4` 文件系统来读取文件。
+```bash
+cargo install cargo-binutils
+```
 
-## 本地测试
+#### Dependencies for C apps
 
-如你写好OS后，想在在本地测试，可以参考现有starry-next的[Readme](https://github.com/oscomp/starry-next)，这也是你的训练基础OS。
+Install `libclang-dev`:
 
-## 在线测试
-github的CI对内核进行测试的执行时间设置为 `300` 秒（`5`分钟），超时后程序会被终止，不再继续执行，所得分数为超时前完成的部分的分数。
-github的CI执行完毕后，你可以在相应仓库的action中查看详细结果。
-github的CI测试可能会有脚本执行的权限问题，如果添加`chmod +x`后没有解决，可以尝试使用`git update-index --chmod=+x build.cmd`。
+```bash
+sudo apt install libclang-dev
+```
 
-## 注意事项
-- `QEMU` 版本为 `9.2.1`
-- `RUST ToolChain` 版本为 `nightly-2025-01-18`
-- 编译目标架构为随测试架构不同而变化
-- 内核执行时间为 `5` 分钟
-- 只有 `main` 分支的提交可以被Github 上的CI评测机处理
-- Github 上的CI评测机在初次运行时需要编译 `qemu`，可能需要花费一些时间，请耐心等待
-- 如果在实践中碰到问题，请在本repo的 `issues` 栏中发帖子
-- 如果有进一步的改进，请给本repo提 `Pull requests`
-- 此外，评测时您需要在您想要测试测例类型的前后输出例如＂#### OS COMP TEST GROUP START basic-musl ####＂和＂#### OS COMP TEST GROUP END basic-musl ####＂，这样您才能获得相应评测分数。
+Download & install [musl](https://musl.cc) toolchains:
 
+```bash
+# download
+wget https://musl.cc/aarch64-linux-musl-cross.tgz
+wget https://musl.cc/riscv64-linux-musl-cross.tgz
+wget https://musl.cc/x86_64-linux-musl-cross.tgz
+# install
+tar zxf aarch64-linux-musl-cross.tgz
+tar zxf riscv64-linux-musl-cross.tgz
+tar zxf x86_64-linux-musl-cross.tgz
+# exec below command in bash OR add below info in ~/.bashrc
+export PATH=`pwd`/x86_64-linux-musl-cross/bin:`pwd`/aarch64-linux-musl-cross/bin:`pwd`/riscv64-linux-musl-cross/bin:$PATH
+```
+
+#### Dependencies for running apps
+
+```bash
+# for Debian/Ubuntu
+sudo apt-get install qemu-system
+```
+
+```bash
+# for macos
+brew install qemu
+```
+
+Notice: The version of `qemu` should **be no less than 8.2.0**.
+
+Other systems, arch and version please refer to [Qemu Download](https://www.qemu.org/download/#linux)
+
+### 2. Build & Run
+
+```bash
+# Clone the base repository
+./scripts/get_deps.sh
+
+# Build user applications
+make user_apps ARCH=<arch> AX_TESTCASE=<testcases>
+
+# Build kernel
+make ARCH=<arch> LOG=<log> AX_TESTCASE=<testcases> build
+
+# Run kernel
+make ARCH=<arch> LOG=<log> AX_TESTCASE=<testcases> run
+```
+
+Where `testcases` are shown under the `apps/` folder.
+
+`<arch>` should be one of `riscv64`, `aarch64`, `x86_64`.
+
+`<log>` should be one of `off`, `error`, `warn`, `info`, `debug`, `trace`.
+
+More arguments and targets can be found in [Makefile](./Makefile).
+
+For example, to run the [nimbos testcases](apps/nimbos/) on `qemu-system-x86_64` with log level `info`:
+
+```bash
+make ARCH=x86_64 LOG=info AX_TESTCASE=nimbos run
+```
+
+Note: Arguments like `NET`, `BLK`, and `GRAPHIC` enable devices in QEMU, which take effect only at runtime, not at build time.

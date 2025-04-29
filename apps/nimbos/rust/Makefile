@@ -1,5 +1,5 @@
 ARCH ?= x86_64
-MODE ?= debug
+MODE ?= release
 
 ifeq ($(ARCH), x86_64)
   target := x86_64-unknown-none
@@ -8,8 +8,6 @@ else ifeq ($(ARCH), aarch64)
   target := aarch64-unknown-none-softfloat
 else ifeq ($(ARCH), riscv64)
   target := riscv64imac-unknown-none-elf
-else ifeq ($(ARCH), loongarch64)
-  target := loongarch64-unknown-none
 else
   $(error Unsupported architecture "$(ARCH)")
 endif

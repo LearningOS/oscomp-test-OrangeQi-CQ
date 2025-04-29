@@ -1,4 +1,4 @@
-use core::arch::{asm, naked_asm};
+use core::arch::asm;
 
 use crate::syscall::{SYSCALL_CLONE, SYSCALL_EXIT};
 
@@ -24,7 +24,7 @@ pub extern "C" fn sys_clone(_entry: fn(usize) -> i32, _arg: usize, _newsp: usize
     // syscall(SYSCALL_CLONE, newsp)
     //                   x8,     x0
     unsafe {
-        naked_asm!("
+        asm!("
             // align stack and save entry,arg to the new stack
             and x2, x2, #-16
             stp x0, x1, [x2, #-16]!
@@ -34,10 +34,10 @@ pub extern "C" fn sys_clone(_entry: fn(usize) -> i32, _arg: usize, _newsp: usize
             mov x8, {sys_clone}
             svc #0
 
-            cbz x0, 2f
+            cbz x0, 1f
             // parent
             ret
-        2:
+        1:
             // child
             ldp x1, x0, [sp], #16
             blr x1
@@ -45,7 +45,8 @@ pub extern "C" fn sys_clone(_entry: fn(usize) -> i32, _arg: usize, _newsp: usize
             mov x8, {sys_exit}
             svc #0",
             sys_clone = const SYSCALL_CLONE,
-            sys_exit = const SYSCALL_EXIT
+            sys_exit = const SYSCALL_EXIT,
+            options(noreturn)
         )
     }
 }

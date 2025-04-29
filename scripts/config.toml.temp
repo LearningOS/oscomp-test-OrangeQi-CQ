@@ -1,12 +1,50 @@
-[patch.'https://github.com/oscomp/arceos.git']
-axfeat = { path = "%AX_ROOT%/api/axfeat" }
+[patch.'https://github.com/arceos-org/arceos.git']
+axstd = { path = "%AX_ROOT%/ulib/axstd" }
 arceos_posix_api = { path = "%AX_ROOT%/api/arceos_posix_api" }
-
-axconfig = { path = "%AX_ROOT%/modules/axconfig" }
-axfs = { path = "%AX_ROOT%/modules/axfs" }
 axhal = { path = "%AX_ROOT%/modules/axhal" }
-axlog = { path = "%AX_ROOT%/modules/axlog" }
 axmm = { path = "%AX_ROOT%/modules/axmm" }
+axfs = { path = "%AX_ROOT%/modules/axfs" }
 axns = { path = "%AX_ROOT%/modules/axns" }
-axsync = { path = "%AX_ROOT%/modules/axsync" }
 axtask = { path = "%AX_ROOT%/modules/axtask" }
+axsync = { path = "%AX_ROOT%/modules/axsync" }
+axruntime = { path = "%AX_ROOT%/modules/axruntime" }
+axlog = { path = "%AX_ROOT%/modules/axlog" }
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/arceos-org/allocator.git?tag=v0.1.0"]
+git = "https://github.com/arceos-org/allocator.git"
+tag = "v0.1.0"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/arceos-org/axdriver_crates.git?tag=v0.1.0"]
+git = "https://github.com/arceos-org/axdriver_crates.git"
+tag = "v0.1.0"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/arceos-org/linked_list.git?tag=v0.1.0"]
+git = "https://github.com/arceos-org/linked_list.git"
+tag = "v0.1.0"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/arceos-org/scheduler.git?tag=v0.1.0"]
+git = "https://github.com/arceos-org/scheduler.git"
+tag = "v0.1.0"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/mexus/numeric-enum-macro"]
+git = "https://github.com/mexus/numeric-enum-macro"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/rafalh/rust-fatfs?rev=85f06e0"]
+git = "https://github.com/rafalh/rust-fatfs"
+rev = "85f06e0"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/rcore-os/smoltcp.git?rev=2ade274"]
+git = "https://github.com/rcore-os/smoltcp.git"
+rev = "2ade274"
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"

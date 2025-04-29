@@ -61,8 +61,6 @@ if [ -z "$FILE" ]; then # use default testcases
 		FILE=x86_64_linux_musl
 	elif [ "$arch" = "aarch64" ]; then
 		FILE=aarch64-linux-musl
-	elif [ "$arch" = "aarch64_be" ]; then
-		FILE=loongarch64-linux-musl
 	else
 		echo "Unknown architecture: $arch"
 		exit 1
@@ -100,11 +98,11 @@ if [ "x$os" = "xDarwin" ];then
 	hdiutil detach mnt
 	chmod 777 disk.img
 else
-	mount disk.img mnt
+	sudo mount disk.img mnt
 	# 根据命令行参数生成对应的测例
 	echo "Copying $arch $fs $FILE/* to disk"
-	cp -r ./$FILE/* ./mnt/
-	umount mnt
-	rm -rf mnt
-	chmod 777 disk.img
+	sudo cp -r ./$FILE/* ./mnt/
+	sudo umount mnt
+	sudo rm -rf mnt
+	sudo chmod 777 disk.img
 fi

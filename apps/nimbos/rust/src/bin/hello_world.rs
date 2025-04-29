@@ -4,7 +4,7 @@
 #[macro_use]
 extern crate user_lib;
 
-#[unsafe(no_mangle)]
+#[no_mangle]
 pub fn main() -> i32 {
     println!("Hello world from user mode program!");
     0

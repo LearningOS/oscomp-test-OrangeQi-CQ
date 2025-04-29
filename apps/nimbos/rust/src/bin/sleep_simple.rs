@@ -6,7 +6,7 @@ extern crate user_lib;
 
 use user_lib::{get_time_us, sleep};
 
-#[unsafe(no_mangle)]
+#[no_mangle]
 pub fn main() -> i32 {
     println!("into sleep test!");
     let start = get_time_us();
