@@ -9,7 +9,7 @@ jobs:
       fail-fast: false
       matrix:
         rust-toolchain: [nightly]
-        targets: [x86_64-unknown-none, riscv64gc-unknown-none-elf, aarch64-unknown-none-softfloat]
+        targets: [x86_64-unknown-none, riscv64gc-unknown-none-elf, aarch64-unknown-none]
     steps:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
@@ -21,12 +21,24 @@ jobs:
       run: ./scripts/get_deps.sh
     - name: Check rust version
       run: rustc --version --verbose
+    - uses: ./.github/workflows/actions/setup-musl
+      with:
+        arch: x86_64
+    - uses: ./.github/workflows/actions/setup-musl
+      with:
+        arch: riscv64
+    - uses: ./.github/workflows/actions/setup-musl
+      with:
+        arch: aarch64
+    - uses: ./.github/workflows/actions/setup-musl
+      with:
+        arch: loongarch64
     - name: Check code format
       continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
       run: cargo fmt --all -- --check
     - name: Clippy
       continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
-      run: cargo clippy --target ${{ matrix.targets }} --all-features -- -D warnings -A clippy::new_without_default
+      run: make clippy TARGET=${{ matrix.targets }}
 
   build:
     runs-on: ${{ matrix.os }}
@@ -46,8 +58,11 @@ jobs:
     - uses: Swatinem/rust-cache@v2
     - run: cargo install cargo-binutils
     - run: ./scripts/get_deps.sh
+    - uses: ./.github/workflows/actions/setup-musl
+      with:
+        arch: ${{ matrix.arch }}
     - name: Build for ${{ matrix.arch }}
-      run: make ARCH=${{ matrix.arch }}
+      run: make ARCH=${{ matrix.arch }} build
 
   test-musl:
     runs-on: ${{ matrix.os }}

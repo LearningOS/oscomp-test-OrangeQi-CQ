@@ -1,8 +1,5 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
-#[cfg(feature = "alloc")]
-pub mod owning;
-
 use crate::hal::{BufferDirection, Dma, Hal, PhysAddr};
 use crate::transport::Transport;
 use crate::{align_up, nonnull_slice_from_raw_parts, pages, Error, Result, PAGE_SIZE};
@@ -840,16 +837,13 @@ fn take_first_mut<'a, T>(slice: &mut &'a mut [T]) -> Option<&'a mut T> {
 /// Simulates the device reading from a VirtIO queue and writing a response back, for use in tests.
 ///
 /// The fake device always uses descriptors in order.
-///
-/// Returns true if a descriptor chain was available and processed, or false if no descriptors were
-/// available.
 #[cfg(test)]
 pub(crate) fn fake_read_write_queue<const QUEUE_SIZE: usize>(
     descriptors: *const [Descriptor; QUEUE_SIZE],
     queue_driver_area: *const u8,
     queue_device_area: *mut u8,
     handler: impl FnOnce(Vec<u8>) -> Vec<u8>,
-) -> bool {
+) {
     use core::{ops::Deref, slice};
 
     let available_ring = queue_driver_area as *const AvailRing<QUEUE_SIZE>;
@@ -859,10 +853,10 @@ pub(crate) fn fake_read_write_queue<const QUEUE_SIZE: usize>(
     // nothing else accesses them during this block.
     unsafe {
         // Make sure there is actually at least one descriptor available to read from.
-        if (*available_ring).idx.load(Ordering::Acquire) == (*used_ring).idx.load(Ordering::Acquire)
-        {
-            return false;
-        }
+        assert_ne!(
+            (*available_ring).idx.load(Ordering::Acquire),
+            (*used_ring).idx.load(Ordering::Acquire)
+        );
         // The fake device always uses descriptors in order, like VIRTIO_F_IN_ORDER, so
         // `used_ring.idx` marks the next descriptor we should take from the available ring.
         let next_slot = (*used_ring).idx.load(Ordering::Acquire) & (QUEUE_SIZE as u16 - 1);
@@ -967,8 +961,6 @@ pub(crate) fn fake_read_write_queue<const QUEUE_SIZE: usize>(
         (*used_ring).ring[next_slot as usize].id = head_descriptor_index.into();
         (*used_ring).ring[next_slot as usize].len = (input_length + output.len()) as u32;
         (*used_ring).idx.fetch_add(1, Ordering::AcqRel);
-
-        true
     }
 }
 

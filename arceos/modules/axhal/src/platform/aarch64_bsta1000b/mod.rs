@@ -19,7 +19,7 @@ pub mod time {
     pub use crate::platform::aarch64_common::generic_timer::*;
 }
 
-extern "C" {
+unsafe extern "C" {
     fn rust_main(cpu_id: usize, dtb: usize);
     #[cfg(feature = "smp")]
     fn rust_main_secondary(cpu_id: usize);

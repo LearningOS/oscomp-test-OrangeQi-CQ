@@ -11,7 +11,7 @@ pub mod irq;
 #[cfg(feature = "smp")]
 pub mod mp;
 
-extern "C" {
+unsafe extern "C" {
     fn rust_main(cpu_id: usize, dtb: usize);
     #[cfg(feature = "smp")]
     fn rust_main_secondary(cpu_id: usize);
@@ -20,6 +20,8 @@ extern "C" {
 unsafe extern "C" fn rust_entry(cpu_id: usize, dtb: usize) {
     crate::mem::clear_bss();
     crate::cpu::init_primary(cpu_id);
+    #[cfg(feature = "uspace")]
+    riscv::register::sstatus::set_sum();
     self::time::init_early();
     rust_main(cpu_id, dtb);
 }

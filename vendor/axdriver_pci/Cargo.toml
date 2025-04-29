@@ -14,9 +14,16 @@ edition = "2021"
 name = "axdriver_pci"
 version = "0.1.0"
 authors = ["Yuekai Jia <equation618@gmail.com>"]
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "Structures and functions for PCI bus operations"
 homepage = "https://github.com/arceos-org/arceos"
 documentation = "https://arceos-org.github.io/axdriver_crates/axdriver_pci"
+readme = false
 keywords = [
     "arceos",
     "dirver",
@@ -29,6 +36,10 @@ categories = [
 ]
 license = "GPL-3.0-or-later OR Apache-2.0 OR MulanPSL-2.0"
 repository = "https://github.com/arceos-org/axdriver_crates"
+
+[lib]
+name = "axdriver_pci"
+path = "src/lib.rs"
 
 [dependencies]
 virtio-drivers = "0.7.4"

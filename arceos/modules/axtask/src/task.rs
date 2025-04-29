@@ -1,19 +1,20 @@
 use alloc::{boxed::Box, string::String, sync::Arc};
 use core::ops::Deref;
-use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, AtomicU8, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU8, AtomicU64, Ordering};
 use core::{alloc::Layout, cell::UnsafeCell, fmt, ptr::NonNull};
 
 #[cfg(feature = "preempt")]
 use core::sync::atomic::AtomicUsize;
 
+use kspin::SpinNoIrq;
+use memory_addr::{VirtAddr, align_up_4k};
+
+use axhal::arch::TaskContext;
 #[cfg(feature = "tls")]
 use axhal::tls::TlsArea;
 
-use axhal::arch::TaskContext;
-use memory_addr::{align_up_4k, VirtAddr};
-
 use crate::task_ext::AxTaskExt;
-use crate::{AxRunQueue, AxTask, AxTaskRef, WaitQueue};
+use crate::{AxCpuMask, AxTask, AxTaskRef, WaitQueue};
 
 /// A unique identifier for a thread.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -23,9 +24,14 @@ pub struct TaskId(u64);
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum TaskState {
+    /// Task is running on some CPU.
     Running = 1,
+    /// Task is ready to run on some scheduler's ready queue.
     Ready = 2,
+    /// Task is blocked (in the wait queue or timer list),
+    /// and it has finished its scheduling process, it can be wake up by `notify()` on any run queue safely.
     Blocked = 3,
+    /// Task is exited and waiting for being dropped.
     Exited = 4,
 }
 
@@ -39,9 +45,21 @@ pub struct TaskInner {
     entry: Option<*mut dyn FnOnce()>,
     state: AtomicU8,
 
+    /// CPU affinity mask.
+    cpumask: SpinNoIrq<AxCpuMask>,
+
+    /// Mark whether the task is in the wait queue.
     in_wait_queue: AtomicBool,
+
+    /// Used to indicate whether the task is running on a CPU.
+    #[cfg(feature = "smp")]
+    on_cpu: AtomicBool,
+
+    /// A ticket ID used to identify the timer event.
+    /// Set by `set_timer_ticket()` when creating a timer event in `set_alarm_wakeup()`,
+    /// expired by setting it as zero in `timer_ticket_expired()`, which is called by `cancel_events()`.
     #[cfg(feature = "irq")]
-    in_timer_list: AtomicBool,
+    timer_ticket_id: AtomicU64,
 
     #[cfg(feature = "preempt")]
     need_resched: AtomicBool,
@@ -60,7 +78,7 @@ pub struct TaskInner {
 }
 
 impl TaskId {
-    pub fn new() -> Self {
+    fn new() -> Self {
         static ID_COUNTER: AtomicU64 = AtomicU64::new(1);
         Self(ID_COUNTER.fetch_add(1, Ordering::Relaxed))
     }
@@ -130,7 +148,7 @@ impl TaskInner {
 
     /// Get a combined string of the task ID and name.
     pub fn id_name(&self) -> alloc::string::String {
-        alloc::format!("Task({}, {:?})", self.id.as_u64(), self.name)
+        alloc::format!("Task({}, {:?})", self.id.as_u64(), self.name())
     }
 
     /// Wait for the task to exit, and return the exit code.
@@ -167,6 +185,39 @@ impl TaskInner {
         }
     }
 
+    /// Returns a mutable reference to the task context.
+    #[inline]
+    pub const fn ctx_mut(&mut self) -> &mut TaskContext {
+        self.ctx.get_mut()
+    }
+
+    /// Returns the top address of the kernel stack.
+    #[inline]
+    pub const fn kernel_stack_top(&self) -> Option<VirtAddr> {
+        match &self.kstack {
+            Some(s) => Some(s.top()),
+            None => None,
+        }
+    }
+
+    /// Gets the cpu affinity mask of the task.
+    ///
+    /// Returns the cpu affinity mask of the task in type [`AxCpuMask`].
+    #[inline]
+    pub fn cpumask(&self) -> AxCpuMask {
+        *self.cpumask.lock()
+    }
+
+    /// Sets the cpu affinity mask of the task.
+    ///
+    /// # Arguments
+    /// `cpumask` - The cpu affinity mask to be set in type [`AxCpuMask`].
+    #[inline]
+    pub fn set_cpumask(&self, cpumask: AxCpuMask) {
+        *self.cpumask.lock() = cpumask
+    }
+
+    /// Read the top address of the kernel stack for the task.
     #[inline]
     pub fn get_kernel_stack_top(&self) -> Option<usize> {
         if let Some(kstack) = &self.kstack {
@@ -175,11 +226,7 @@ impl TaskInner {
         None
     }
 
-    #[inline]
-    pub fn state(&self) -> TaskState {
-        self.state.load(Ordering::Acquire).into()
-    }
-
+    /// Returns the exit code of the task.
     pub fn exit_code(&self) -> i32 {
         self.exit_code.load(Ordering::Acquire)
     }
@@ -195,9 +242,13 @@ impl TaskInner {
             is_init: false,
             entry: None,
             state: AtomicU8::new(TaskState::Ready as u8),
+            // By default, the task is allowed to run on all CPUs.
+            cpumask: SpinNoIrq::new(AxCpuMask::full()),
             in_wait_queue: AtomicBool::new(false),
             #[cfg(feature = "irq")]
-            in_timer_list: AtomicBool::new(false),
+            timer_ticket_id: AtomicU64::new(0),
+            #[cfg(feature = "smp")]
+            on_cpu: AtomicBool::new(false),
             #[cfg(feature = "preempt")]
             need_resched: AtomicBool::new(false),
             #[cfg(feature = "preempt")]
@@ -223,6 +274,8 @@ impl TaskInner {
     pub(crate) fn new_init(name: String) -> Self {
         let mut t = Self::new_common(TaskId::new(), name);
         t.is_init = true;
+        #[cfg(feature = "smp")]
+        t.set_on_cpu(true);
         if t.name() == "idle" {
             t.is_idle = true;
         }
@@ -233,14 +286,31 @@ impl TaskInner {
         Arc::new(AxTask::new(self))
     }
 
-    // #[inline]
-    // pub(crate) fn state(&self) -> TaskState {
-    //     self.state.load(Ordering::Acquire).into()
-    // }
-
+    /// Returns the task's current state.
     #[inline]
-    pub(crate) fn set_state(&self, state: TaskState) {
+    pub fn state(&self) -> TaskState {
+        self.state.load(Ordering::Acquire).into()
+    }
+
+    /// Set the task's state.
+    #[inline]
+    pub fn set_state(&self, state: TaskState) {
         self.state.store(state as u8, Ordering::Release)
+    }
+
+    /// Transition the task state from `current_state` to `new_state`,
+    /// Returns `true` if the current state is `current_state` and the state is successfully set to `new_state`,
+    /// otherwise returns `false`.
+    #[inline]
+    pub(crate) fn transition_state(&self, current_state: TaskState, new_state: TaskState) -> bool {
+        self.state
+            .compare_exchange(
+                current_state as u8,
+                new_state as u8,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_ok()
     }
 
     #[inline]
@@ -251,11 +321,6 @@ impl TaskInner {
     #[inline]
     pub(crate) fn is_ready(&self) -> bool {
         matches!(self.state(), TaskState::Ready)
-    }
-
-    #[inline]
-    pub(crate) fn is_blocked(&self) -> bool {
-        matches!(self.state(), TaskState::Blocked)
     }
 
     #[inline]
@@ -278,16 +343,30 @@ impl TaskInner {
         self.in_wait_queue.store(in_wait_queue, Ordering::Release);
     }
 
+    /// Returns task's current timer ticket ID.
     #[inline]
     #[cfg(feature = "irq")]
-    pub(crate) fn in_timer_list(&self) -> bool {
-        self.in_timer_list.load(Ordering::Acquire)
+    pub(crate) fn timer_ticket(&self) -> u64 {
+        self.timer_ticket_id.load(Ordering::Acquire)
     }
 
+    /// Set the timer ticket ID.
     #[inline]
     #[cfg(feature = "irq")]
-    pub(crate) fn set_in_timer_list(&self, in_timer_list: bool) {
-        self.in_timer_list.store(in_timer_list, Ordering::Release);
+    pub(crate) fn set_timer_ticket(&self, timer_ticket_id: u64) {
+        // CAN NOT set timer_ticket_id to 0,
+        // because 0 is used to indicate the timer event is expired.
+        assert!(timer_ticket_id != 0);
+        self.timer_ticket_id
+            .store(timer_ticket_id, Ordering::Release);
+    }
+
+    /// Expire timer ticket ID by setting it to 0,
+    /// it can be used to identify one timer event is triggered or expired.
+    #[inline]
+    #[cfg(feature = "irq")]
+    pub(crate) fn timer_ticket_expired(&self) {
+        self.timer_ticket_id.store(0, Ordering::Release);
     }
 
     #[inline]
@@ -319,18 +398,22 @@ impl TaskInner {
 
     #[cfg(feature = "preempt")]
     fn current_check_preempt_pending() {
+        use kernel_guard::NoPreemptIrqSave;
         let curr = crate::current();
         if curr.need_resched.load(Ordering::Acquire) && curr.can_preempt(0) {
-            let mut rq = crate::RUN_QUEUE.lock();
+            // Note: if we want to print log msg during `preempt_resched`, we have to
+            // disable preemption here, because the axlog may cause preemption.
+            let mut rq = crate::current_run_queue::<NoPreemptIrqSave>();
             if curr.need_resched.load(Ordering::Acquire) {
-                rq.preempt_resched();
+                rq.preempt_resched()
             }
         }
     }
 
-    pub(crate) fn notify_exit(&self, exit_code: i32, rq: &mut AxRunQueue) {
+    /// Notify all tasks that join on this task.
+    pub(crate) fn notify_exit(&self, exit_code: i32) {
         self.exit_code.store(exit_code, Ordering::Release);
-        self.wait_for_exit.notify_all_locked(false, rq);
+        self.wait_for_exit.notify_all(false);
     }
 
     #[inline]
@@ -338,19 +421,23 @@ impl TaskInner {
         self.ctx.get()
     }
 
-    /// Returns a mutable reference to the task context.
+    /// Returns whether the task is running on a CPU.
+    ///
+    /// It is used to protect the task from being moved to a different run queue
+    /// while it has not finished its scheduling process.
+    /// The `on_cpu field is set to `true` when the task is preparing to run on a CPU,
+    /// and it is set to `false` when the task has finished its scheduling process in `clear_prev_task_on_cpu()`.
+    #[cfg(feature = "smp")]
     #[inline]
-    pub const fn ctx_mut(&mut self) -> &mut TaskContext {
-        self.ctx.get_mut()
+    pub(crate) fn on_cpu(&self) -> bool {
+        self.on_cpu.load(Ordering::Acquire)
     }
 
-    /// Returns the top address of the kernel stack.
+    /// Sets whether the task is running on a CPU.
+    #[cfg(feature = "smp")]
     #[inline]
-    pub const fn kernel_stack_top(&self) -> Option<VirtAddr> {
-        match &self.kstack {
-            Some(s) => Some(s.top()),
-            None => None,
-        }
+    pub(crate) fn set_on_cpu(&self, on_cpu: bool) {
+        self.on_cpu.store(on_cpu, Ordering::Release)
     }
 }
 
@@ -434,14 +521,18 @@ impl CurrentTask {
         #[cfg(feature = "tls")]
         axhal::arch::write_thread_pointer(init_task.tls.tls_ptr() as usize);
         let ptr = Arc::into_raw(init_task);
-        axhal::cpu::set_current_task_ptr(ptr);
+        unsafe {
+            axhal::cpu::set_current_task_ptr(ptr);
+        }
     }
 
     pub(crate) unsafe fn set_current(prev: Self, next: AxTaskRef) {
         let Self(arc) = prev;
         ManuallyDrop::into_inner(arc); // `call Arc::drop()` to decrease prev task reference count.
         let ptr = Arc::into_raw(next);
-        axhal::cpu::set_current_task_ptr(ptr);
+        unsafe {
+            axhal::cpu::set_current_task_ptr(ptr);
+        }
     }
 }
 
@@ -453,8 +544,12 @@ impl Deref for CurrentTask {
 }
 
 extern "C" fn task_entry() -> ! {
-    // release the lock that was implicitly held across the reschedule
-    unsafe { crate::RUN_QUEUE.force_unlock() };
+    #[cfg(feature = "smp")]
+    unsafe {
+        // Clear the prev task on CPU before running the task entry function.
+        crate::run_queue::clear_prev_task_on_cpu();
+    }
+    // Enable irq (if feature "irq" is enabled) before running the task entry function.
     #[cfg(feature = "irq")]
     axhal::arch::enable_irqs();
     let task = crate::current();

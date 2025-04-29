@@ -1,9 +1,5 @@
-#![allow(unused_imports)]
-
-use core::arch::asm;
-use memory_addr::{PhysAddr, VirtAddr};
-
-include_asm_marcos!();
+use core::arch::naked_asm;
+use memory_addr::VirtAddr;
 
 /// General registers of RISC-V.
 #[allow(missing_docs)]
@@ -85,21 +81,10 @@ impl TrapFrame {
     pub const fn arg5(&self) -> usize {
         self.regs.a5
     }
-    
-    /// set return code
-    pub fn set_ret_code(&mut self, ret_value: usize) {
-        self.regs.a0 = ret_value;
-    }
-
-    /// set user sp
-    pub fn set_user_sp(&mut self, user_sp: usize) {
-        self.regs.sp = user_sp;
-    }
 }
 
 /// Context to enter user space.
 #[cfg(feature = "uspace")]
-#[derive(Copy, Clone)]
 pub struct UspaceContext(TrapFrame);
 
 #[cfg(feature = "uspace")]
@@ -165,8 +150,7 @@ impl UspaceContext {
     /// # Safety
     ///
     /// This function is unsafe because it changes processor mode and the stack.
-    #[inline(never)]
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub unsafe fn enter_uspace(&self, kstack_top: VirtAddr) -> ! {
         use riscv::register::{sepc, sscratch};
 
@@ -175,24 +159,28 @@ impl UspaceContext {
         sepc::write(self.0.sepc);
         // Address of the top of the kernel stack after saving the trap frame.
         let kernel_trap_addr = kstack_top.as_usize() - core::mem::size_of::<TrapFrame>();
-        asm!("
-            mv      sp, {tf}
-            
-            STR     gp, {kernel_trap_addr}, 2
-            LDR     gp, sp, 2
+        unsafe {
+            core::arch::asm!(
+                include_asm_macros!(),
+                "
+                mv      sp, {tf}
 
-            STR     tp, {kernel_trap_addr}, 3
-            LDR     tp, sp, 3
+                STR     gp, {kernel_trap_addr}, 2
+                LDR     gp, sp, 2
 
-            LDR     t0, sp, 32
-            csrw    sstatus, t0
-            POP_GENERAL_REGS
-            LDR     sp, sp, 1
-            sret",
-            tf = in(reg) &(self.0),
-            kernel_trap_addr = in(reg) kernel_trap_addr,
-            options(noreturn),
-        )
+                STR     tp, {kernel_trap_addr}, 3
+                LDR     tp, sp, 3
+
+                LDR     t0, sp, 32
+                csrw    sstatus, t0
+                POP_GENERAL_REGS
+                LDR     sp, sp, 1
+                sret",
+                tf = in(reg) &(self.0),
+                kernel_trap_addr = in(reg) kernel_trap_addr,
+                options(noreturn),
+            )
+        }
     }
 }
 
@@ -231,7 +219,7 @@ pub struct TaskContext {
     pub tp: usize,
     /// The `satp` register value, i.e., the page table root.
     #[cfg(feature = "uspace")]
-    pub satp: PhysAddr,
+    pub satp: memory_addr::PhysAddr,
     // TODO: FP states
 }
 
@@ -266,7 +254,7 @@ impl TaskContext {
     ///
     /// [1]: crate::paging::kernel_page_table_root
     #[cfg(feature = "uspace")]
-    pub fn set_page_table_root(&mut self, satp: PhysAddr) {
+    pub fn set_page_table_root(&mut self, satp: memory_addr::PhysAddr) {
         self.satp = satp;
     }
 
@@ -295,7 +283,8 @@ impl TaskContext {
 
 #[naked]
 unsafe extern "C" fn context_switch(_current_task: &mut TaskContext, _next_task: &TaskContext) {
-    asm!(
+    naked_asm!(
+        include_asm_macros!(),
         "
         // save old context (callee-saved registers)
         STR     ra, a0, 0
@@ -330,6 +319,5 @@ unsafe extern "C" fn context_switch(_current_task: &mut TaskContext, _next_task:
         LDR     ra, a1, 0
 
         ret",
-        options(noreturn),
     )
 }

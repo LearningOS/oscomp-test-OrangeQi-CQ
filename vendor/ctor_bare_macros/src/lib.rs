@@ -11,7 +11,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, Error, Item};
+use syn::{Error, Item, parse_macro_input};
 
 /// Register a constructor function to be called before `main`.
 ///
@@ -57,12 +57,12 @@ pub fn register_ctor(attr: TokenStream, function: TokenStream) -> TokenStream {
         let block = &func.block;
 
         quote! {
-            #[link_section = ".init_array"]
+            #[unsafe(link_section = ".init_array")]
             #[used]
             #[allow(non_upper_case_globals)]
             static #name_ident: extern "C" fn() = #name;
 
-            #[no_mangle]
+            #[unsafe(no_mangle)]
             #[allow(non_upper_case_globals)]
             pub extern "C" fn #name() {
                 #block

@@ -2,8 +2,8 @@ use core::fmt;
 
 use lazyinit::LazyInit;
 use x86_64::addr::VirtAddr;
-use x86_64::structures::idt::{Entry, HandlerFunc, InterruptDescriptorTable};
 use x86_64::structures::DescriptorTablePointer;
+use x86_64::structures::idt::{Entry, HandlerFunc, InterruptDescriptorTable};
 
 const NUM_INT: usize = 256;
 
@@ -20,7 +20,7 @@ impl IdtStruct {
     /// `trap_handler_table`.
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        extern "C" {
+        unsafe extern "C" {
             #[link_name = "trap_handler_table"]
             static ENTRIES: [extern "C" fn(); NUM_INT];
         }

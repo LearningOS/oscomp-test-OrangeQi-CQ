@@ -141,7 +141,7 @@ pub unsafe fn sys_select(
                 return Ok(res);
             }
 
-            if deadline.map_or(false, |ddl| wall_time() >= ddl) {
+            if deadline.is_some_and(|ddl| wall_time() >= ddl) {
                 debug!("    timeout!");
                 return Ok(0);
             }
@@ -153,13 +153,13 @@ pub unsafe fn sys_select(
 unsafe fn zero_fd_set(fds: *mut ctypes::fd_set, nfds: usize) {
     if !fds.is_null() {
         let nfds_usizes = nfds.div_ceil(BITS_PER_USIZE);
-        let dst = &mut (*fds).fds_bits[..nfds_usizes];
+        let dst = &mut unsafe { *fds }.fds_bits[..nfds_usizes];
         dst.fill(0);
     }
 }
 
 unsafe fn set_fd_set(fds: *mut ctypes::fd_set, fd: usize) {
     if !fds.is_null() {
-        (*fds).fds_bits[fd / BITS_PER_USIZE] |= 1 << (fd % BITS_PER_USIZE);
+        unsafe { *fds }.fds_bits[fd / BITS_PER_USIZE] |= 1 << (fd % BITS_PER_USIZE);
     }
 }

@@ -7,37 +7,42 @@ extern crate log;
 extern crate alloc;
 extern crate axstd;
 
-#[rustfmt::skip]
-mod config {
-    include!(concat!(env!("OUT_DIR"), "/uspace_config.rs"));
-}
 mod ctypes;
-mod loader;
+
 mod mm;
 mod syscall_imp;
 mod task;
-
-use alloc::sync::Arc;
+use alloc::{string::ToString, sync::Arc, vec};
 
 use axhal::arch::UspaceContext;
+use axstd::println;
 use axsync::Mutex;
+use memory_addr::VirtAddr;
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 fn main() {
-    //loader::list_apps();
     let testcases = option_env!("AX_TESTCASES_LIST")
         .unwrap_or_else(|| "Please specify the testcases list by making user_apps")
         .split(',')
         .filter(|&x| !x.is_empty());
-    info!("Testcases list: {:?}", testcases);
+    println!("#### OS COMP TEST GROUP START basic-musl ####");
     for testcase in testcases {
-        info!("Running testcase: {}", testcase);
-        let (entry_vaddr, ustack_top, uspace) = mm::load_user_app(testcase).unwrap();
+        println!("Testing {}: ", testcase.split('/').next_back().unwrap());
+
+        let args = vec![testcase.to_string()];
+        let mut uspace = axmm::new_user_aspace(
+            VirtAddr::from_usize(axconfig::plat::USER_SPACE_BASE),
+            axconfig::plat::USER_SPACE_SIZE,
+        )
+        .expect("Failed to create user address space");
+        let (entry_vaddr, ustack_top) = mm::load_user_app(&mut (args.into()), &mut uspace).unwrap();
         let user_task = task::spawn_user_task(
             Arc::new(Mutex::new(uspace)),
             UspaceContext::new(entry_vaddr.into(), ustack_top, 2333),
+            0,
         );
         let exit_code = user_task.join();
         info!("User task {} exited with code: {:?}", testcase, exit_code);
     }
+    println!("#### OS COMP TEST GROUP END basic-musl ####");
 }

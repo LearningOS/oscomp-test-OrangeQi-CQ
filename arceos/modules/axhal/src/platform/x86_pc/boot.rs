@@ -3,7 +3,7 @@ use core::arch::global_asm;
 use x86_64::registers::control::{Cr0Flags, Cr4Flags};
 use x86_64::registers::model_specific::EferFlags;
 
-use axconfig::{PHYS_VIRT_OFFSET, TASK_STACK_SIZE};
+use axconfig::{TASK_STACK_SIZE, plat::PHYS_VIRT_OFFSET};
 
 /// Flags set in the ’flags’ member of the multiboot header.
 ///
@@ -30,7 +30,7 @@ const CR4: u64 = Cr4Flags::PHYSICAL_ADDRESS_EXTENSION.bits()
     };
 const EFER: u64 = EferFlags::LONG_MODE_ENABLE.bits() | EferFlags::NO_EXECUTE_ENABLE.bits();
 
-#[link_section = ".bss.stack"]
+#[unsafe(link_section = ".bss.stack")]
 static mut BOOT_STACK: [u8; TASK_STACK_SIZE] = [0; TASK_STACK_SIZE];
 
 global_asm!(

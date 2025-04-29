@@ -33,6 +33,7 @@ members = [
 
 [workspace.package]
 version = "0.1.0"
+edition = "2024"
 authors = ["Yuekai Jia <equation618@gmail.com>"]
 license = "GPL-3.0-or-later OR Apache-2.0 OR MulanPSL-2.0"
 homepage = "https://github.com/arceos-org/arceos"
@@ -64,8 +65,9 @@ axsync = { path = "modules/axsync" }
 axtask = { path = "modules/axtask" }
 axdma = { path = "modules/axdma" }
 
+[patch.crates-io]
+page_table_multiarch = { git = "https://github.com/oscomp/page_table_multiarch.git", rev = "c8a13b0"}
+page_table_entry = { git = "https://github.com/oscomp/page_table_multiarch.git", rev = "c8a13b0" }
+
 [profile.release]
 lto = true
-
-[profile.dev]
-codegen-units = 1

@@ -12,8 +12,14 @@
 [package]
 edition = "2021"
 name = "int_ratio"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Yuekai Jia <equation618@gmail.com>"]
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "The type of ratios represented by two integers."
 homepage = "https://github.com/arceos-org/arceos"
 documentation = "https://docs.rs/int_ratio"
@@ -27,5 +33,9 @@ keywords = [
 categories = ["mathematics"]
 license = "GPL-3.0-or-later OR Apache-2.0 OR MulanPSL-2.0"
 repository = "https://github.com/arceos-org/int_ratio"
+
+[lib]
+name = "int_ratio"
+path = "src/lib.rs"
 
 [dependencies]

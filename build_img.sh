@@ -61,6 +61,8 @@ if [ -z "$FILE" ]; then # use default testcases
 		FILE=x86_64_linux_musl
 	elif [ "$arch" = "aarch64" ]; then
 		FILE=aarch64-linux-musl
+	elif [ "$arch" = "aarch64_be" ]; then
+		FILE=loongarch64-linux-musl
 	else
 		echo "Unknown architecture: $arch"
 		exit 1

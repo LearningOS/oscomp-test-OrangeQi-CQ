@@ -1,25 +1,20 @@
 mod fs;
 mod mm;
 mod task;
-mod time;
-mod pipe;
-mod system_info;
+mod utils;
 
+use crate::task::{time_stat_from_kernel_to_user, time_stat_from_user_to_kernel};
 use axerrno::LinuxError;
 use axhal::{
     arch::TrapFrame,
-    trap::{register_trap_handler, SYSCALL},
+    trap::{SYSCALL, register_trap_handler},
 };
 use syscalls::Sysno;
-use system_info::sys_uname;
-
-use crate::task::{time_stat_from_kernel_to_user, time_stat_from_user_to_kernel};
 
 use self::fs::*;
 use self::mm::*;
 use self::task::*;
-use self::time::*;
-use self::pipe::*;
+use self::utils::*;
 
 /// Macro to generate syscall body
 ///
@@ -45,6 +40,7 @@ macro_rules! syscall_body {
 
 #[register_trap_handler(SYSCALL)]
 fn handle_syscall(tf: &TrapFrame, syscall_num: usize) -> isize {
+    info!("Syscall {:?}", Sysno::from(syscall_num as u32));
     time_stat_from_user_to_kernel();
     let ans = match Sysno::from(syscall_num as u32) {
         Sysno::read => sys_read(tf.arg0() as _, tf.arg1() as _, tf.arg2() as _),
@@ -69,7 +65,7 @@ fn handle_syscall(tf: &TrapFrame, syscall_num: usize) -> isize {
         Sysno::dup => sys_dup(tf.arg0() as _) as _,
         Sysno::dup3 => sys_dup3(tf.arg0() as _, tf.arg1() as _) as _,
         Sysno::clone => sys_clone(
-            tf.arg0() as _, 
+            tf.arg0() as _,
             tf.arg1() as _,
             tf.arg2() as _,
             tf.arg3() as _,
@@ -81,19 +77,33 @@ fn handle_syscall(tf: &TrapFrame, syscall_num: usize) -> isize {
         Sysno::chdir => sys_chdir(tf.arg0() as _) as _,
         Sysno::mkdirat => sys_mkdirat(tf.arg0() as _, tf.arg1() as _, tf.arg2() as _) as _,
         Sysno::execve => sys_execve(tf.arg0() as _, tf.arg1() as _, tf.arg2() as _) as _,
-        Sysno::openat => sys_openat(tf.arg0() as _, tf.arg1() as _, tf.arg2() as _, tf.arg3() as _) as _,
+        Sysno::openat => sys_openat(
+            tf.arg0() as _,
+            tf.arg1() as _,
+            tf.arg2() as _,
+            tf.arg3() as _,
+        ) as _,
         Sysno::getdents64 => sys_getdents64(tf.arg0() as _, tf.arg1() as _, tf.arg2() as _),
         Sysno::linkat => sys_linkat(
-            tf.arg0() as _, 
-            tf.arg1() as _, 
-            tf.arg2() as _, 
-            tf.arg3() as _, 
-            tf.arg4() as _) as _,
-        Sysno::unlinkat => sys_unlinkat(tf.arg0()as _, tf.arg1() as _, tf.arg2() as _),
+            tf.arg0() as _,
+            tf.arg1() as _,
+            tf.arg2() as _,
+            tf.arg3() as _,
+            tf.arg4() as _,
+        ) as _,
+        Sysno::unlinkat => sys_unlinkat(tf.arg0() as _, tf.arg1() as _, tf.arg2() as _),
         Sysno::uname => sys_uname(tf.arg0() as _) as _,
         Sysno::fstat => sys_fstat(tf.arg0() as _, tf.arg1() as _) as _,
+        Sysno::statx => sys_statx(
+            tf.arg0() as _,
+            tf.arg1() as _,
+            tf.arg2() as _,
+            tf.arg3() as _,
+            tf.arg4() as _,
+        ) as _,
         Sysno::munmap => sys_munmap(tf.arg0() as _, tf.arg1() as _) as _,
         Sysno::times => sys_times(tf.arg0() as _) as _,
+        Sysno::brk => sys_brk(tf.arg0() as _) as _,
         #[cfg(target_arch = "x86_64")]
         Sysno::arch_prctl => sys_arch_prctl(tf.arg0() as _, tf.arg1() as _),
         Sysno::set_tid_address => sys_set_tid_address(tf.arg0() as _),
@@ -105,5 +115,6 @@ fn handle_syscall(tf: &TrapFrame, syscall_num: usize) -> isize {
         }
     };
     time_stat_from_kernel_to_user();
+    info!("syscall return: {}", ans);
     ans
 }

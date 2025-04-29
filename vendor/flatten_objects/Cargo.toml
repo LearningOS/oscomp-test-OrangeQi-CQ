@@ -10,11 +10,12 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
-edition = "2021"
+edition = "2024"
 name = "flatten_objects"
-version = "0.1.0"
+version = "0.2.1"
 authors = ["Yuekai Jia <equation618@gmail.com>"]
 build = false
+autolib = false
 autobins = false
 autoexamples = false
 autotests = false
@@ -33,6 +34,7 @@ categories = [
 ]
 license = "GPL-3.0-or-later OR Apache-2.0 OR MulanPSL-2.0"
 repository = "https://github.com/arceos-org/flatten_objects"
+resolver = "2"
 
 [lib]
 name = "flatten_objects"

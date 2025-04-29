@@ -12,14 +12,14 @@ ArceOS was inspired a lot by [Unikraft](https://github.com/unikraft/unikraft).
 
 ## Features & TODOs
 
-* [x] Architecture: x86_64, riscv64, aarch64
-* [x] Platform: QEMU pc-q35 (x86_64), virt (riscv64/aarch64)
+* [x] Architecture: x86_64, riscv64, aarch64, loongarch64
+* [x] Platform: QEMU pc-q35 (x86_64), virt (riscv64/aarch64/loongarch64)
 * [x] Multi-thread
 * [x] FIFO/RR/CFS scheduler
 * [x] VirtIO net/blk/gpu drivers
 * [x] TCP/UDP net stack using [smoltcp](https://github.com/smoltcp-rs/smoltcp)
 * [x] Synchronization/Mutex
-* [x] SMP scheduling with single run queue
+* [x] SMP scheduling with [per-cpu run queue](https://github.com/arceos-org/arceos/discussions/181)
 * [x] File system
 * [ ] Compatible with Linux apps
 * [ ] Interrupt driven device I/O
@@ -27,15 +27,43 @@ ArceOS was inspired a lot by [Unikraft](https://github.com/unikraft/unikraft).
 
 ## Quick Start
 
-### 1. Install Build Dependencies
+### Build and Run through Docker
 
-Install [cargo-binutils](https://github.com/rust-embedded/cargo-binutils) to use `rust-objcopy` and `rust-objdump` tools:
+Install [Docker](https://www.docker.com/) in your system.
+
+Then build all dependencies through provided dockerfile:
 
 ```bash
-cargo install cargo-binutils
+docker build -t arceos -f Dockerfile .
 ```
 
-#### Dependencies for C apps
+Create a container and build/run app:
+```bash
+docker run -it -v $(pwd):/arceos -w /arceos arceos bash
+
+# Now build/run app in the container
+make A=examples/helloworld ARCH=aarch64 run
+```
+
+### Manually Build and Run
+#### 1. Install Build Dependencies
+
+Install [cargo-binutils](https://github.com/rust-embedded/cargo-binutils) to use `rust-objcopy` and `rust-objdump` tools, and [axconfig-gen](https://github.com/arceos-org/axconfig-gen) for kernel configuration:
+
+```bash
+cargo install cargo-binutils axconfig-gen
+```
+
+##### Dependencies for running apps
+
+```bash
+# for Debian/Ubuntu
+sudo apt-get install qemu-system
+# for macos
+brew install qemu
+```
+
+##### Dependencies for building C apps (optional)
 
 Install `libclang-dev`:
 
@@ -50,38 +78,47 @@ Download & install [musl](https://musl.cc) toolchains:
 wget https://musl.cc/aarch64-linux-musl-cross.tgz
 wget https://musl.cc/riscv64-linux-musl-cross.tgz
 wget https://musl.cc/x86_64-linux-musl-cross.tgz
+wget https://github.com/LoongsonLab/oscomp-toolchains-for-oskernel/releases/download/gcc-13.2.0-loongarch64/gcc-13.2.0-loongarch64-linux-gnu.tgz
+wget https://github.com/LoongsonLab/oscomp-toolchains-for-oskernel/raw/refs/heads/main/musl-loongarch64-1.2.2.tgz
 # install
 tar zxf aarch64-linux-musl-cross.tgz
 tar zxf riscv64-linux-musl-cross.tgz
 tar zxf x86_64-linux-musl-cross.tgz
+tar zxf gcc-13.2.0-loongarch64-linux-gnu.tgz
+tar zxf musl-loongarch64-1.2.2.tgz && cd musl-loongarch64-1.2.2 && ./setup && cd ..
 # exec below command in bash OR add below info in ~/.bashrc
-export PATH=`pwd`/x86_64-linux-musl-cross/bin:`pwd`/aarch64-linux-musl-cross/bin:`pwd`/riscv64-linux-musl-cross/bin:$PATH
-```
-
-#### Dependencies for running apps
-
-```bash
-# for Debian/Ubuntu
-sudo apt-get install qemu-system
-```
-
-```bash
-# for macos
-brew install qemu
+export PATH=`pwd`/x86_64-linux-musl-cross/bin:`pwd`/aarch64-linux-musl-cross/bin:`pwd`/riscv64-linux-musl-cross/bin:`pwd`/gcc-13.2.0-loongarch64-linux-gnu/bin:`pwd`/musl-loongarch64-1.2.2/bin:$PATH
 ```
 
 Other systems and arch please refer to [Qemu Download](https://www.qemu.org/download/#linux)
 
-### 2. Build & Run
+#### 2. Build & Run
+
+##### quick run
 
 ```bash
-# build app in arceos directory
-make A=path/to/app ARCH=<arch> LOG=<log>
+# cd arceos directory
+cd arceos
+# build&run app  in arceos directory
+# clean everything
+make clean
+# Example Pattern: make ARCH=<arch>  LOG=<log> A=path/to/app FEATURES=...  run
+# riscv64 example
+make ARCH=riscv64 LOG=debug A=examples/helloworld run
+# x86_64 example
+make clean
+make ARCH=x86_64 LOG=debug A=examples/helloworld run
+# aarch64 example
+make clean
+make ARCH=aarch64 LOG=debug A=examples/helloworld run
+# loongarch64 example
+make clean
+make ARCH=loongarch64 LOG=debug A=examples/helloworld run
 ```
 
 Where `path/to/app` is the relative path to the application. Examples applications can be found in the [examples](examples/) directory or the [arceos-apps](https://github.com/arceos-org/arceos-apps) repository.
 
-`<arch>` should be one of `riscv64`, `aarch64`, `x86_64`.
+`<arch>` should be one of `riscv64`, `aarch64`, `x86_64`, `loongarch64`.
 
 `<log>` should be one of `off`, `error`, `warn`, `info`, `debug`, `trace`.
 
@@ -113,8 +150,8 @@ Examples are given below and in the [app-helloworld](https://github.com/arceos-o
     ```
 
 3. Call library functions from `axstd` in your code, just like the Rust [std](https://doc.rust-lang.org/std/) library.
-    
-    Remember to annotate the `main` function with `#[no_mangle]` (see this [example](examples/helloworld/src/main.rs)).
+
+    Remember to annotate the `main` function with `#[unsafe(no_mangle)]` (see this [example](examples/helloworld/src/main.rs)).
 
 4. Build your application with ArceOS, by running the `make` command in the application directory:
 
@@ -166,16 +203,16 @@ Set the `PLATFORM` variable when run `make`:
 
 ```bash
 # Build helloworld for raspi4
-make PLATFORM=aarch64-raspi4 A=examples/helloworld
+make PLATFORM=aarch64-raspi4 SMP=4 A=examples/helloworld
 ```
 
 You may also need to select the corrsponding device drivers by setting the `FEATURES` variable:
 
 ```bash
 # Build the shell app for raspi4, and use the SD card driver
-make PLATFORM=aarch64-raspi4 A=examples/shell FEATURES=driver-bcm2835-sdhci
+make PLATFORM=aarch64-raspi4 SMP=4 A=examples/shell FEATURES=page-alloc-4g,driver-bcm2835-sdhci BUS=mmio
 # Build httpserver for the bare-metal x86_64 platform, and use the ixgbe and ramdisk driver
-make PLATFORM=x86_64-pc-oslab A=examples/httpserver FEATURES=driver-ixgbe,driver-ramdisk SMP=4
+make PLATFORM=x86_64-pc-oslab A=examples/httpserver FEATURES=page-alloc-4g,driver-ixgbe,driver-ramdisk SMP=4
 ```
 
 ## How to reuse ArceOS modules in your own project

@@ -1,7 +1,7 @@
 [package]
 name = "axfeat"
 version.workspace = true
-edition = "2021"
+edition.workspace = true
 authors = ["Yuekai Jia <equation618@gmail.com>"]
 description = "Top-level feature selection for ArceOS"
 license.workspace = true
@@ -13,7 +13,7 @@ documentation = "https://arceos-org.github.io/arceos/axfeat/index.html"
 default = []
 
 # Multicore
-smp = ["axhal/smp", "axruntime/smp", "kspin/smp"]
+smp = ["axhal/smp", "axruntime/smp", "axtask?/smp", "kspin/smp"]
 
 # Floating point/SIMD
 fp_simd = ["axhal/fp_simd"]
@@ -26,6 +26,8 @@ alloc = ["axalloc", "axruntime/alloc"]
 alloc-tlsf = ["axalloc/tlsf"]
 alloc-slab = ["axalloc/slab"]
 alloc-buddy = ["axalloc/buddy"]
+page-alloc-64g = ["axalloc/page-alloc-64g"] # up to 64G memory capacity
+page-alloc-4g = ["axalloc/page-alloc-4g"] # up to 4G memory capacity
 paging = ["alloc", "axhal/paging", "axruntime/paging"]
 tls = ["alloc", "axhal/tls", "axruntime/tls", "axtask?/tls"]
 dma = ["alloc", "paging"]
@@ -39,6 +41,7 @@ sched_cfs = ["axtask/sched_cfs", "irq"]
 # File system
 fs = ["alloc", "paging", "axdriver/virtio-blk", "dep:axfs", "axruntime/fs"] # TODO: try to remove "paging"
 myfs = ["axfs?/myfs"]
+lwext4_rs = ["axfs/lwext4_rs"]
 
 # Networking
 net = ["alloc", "paging", "axdriver/virtio-net", "dep:axnet", "axruntime/net"]

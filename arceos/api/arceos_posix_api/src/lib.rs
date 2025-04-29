@@ -32,16 +32,22 @@ pub mod config {
 pub mod ctypes;
 
 pub use imp::io::{sys_read, sys_write, sys_writev};
+#[cfg(feature = "fs")]
+pub use imp::path_link::{AT_FDCWD, FilePath, HARDLINK_MANAGER, handle_file_path};
 pub use imp::resources::{sys_getrlimit, sys_setrlimit};
 pub use imp::sys::sys_sysconf;
 pub use imp::task::{sys_exit, sys_getpid, sys_sched_yield};
-pub use imp::time::{sys_clock_gettime, sys_nanosleep, sys_get_time_of_day};
-pub use imp::path_link::{HARDLINK_MANAGER, FilePath, handle_file_path, AT_FDCWD};
+pub use imp::time::{sys_clock_gettime, sys_get_time_of_day, sys_nanosleep};
 
 #[cfg(feature = "fd")]
-pub use imp::fd_ops::{sys_close, sys_dup, sys_dup2, sys_fcntl, FD_TABLE, get_file_like, add_file_like};
+pub use imp::fd_ops::{
+    FD_TABLE, add_file_like, get_file_like, sys_close, sys_dup, sys_dup2, sys_fcntl,
+};
 #[cfg(feature = "fs")]
-pub use imp::fs::{sys_fstat, sys_getcwd, sys_lseek, sys_lstat, sys_open, sys_rename, sys_stat, sys_openat, Directory, File};
+pub use imp::fs::{
+    Directory, File, sys_fstat, sys_getcwd, sys_lseek, sys_lstat, sys_open, sys_openat, sys_rename,
+    sys_stat,
+};
 #[cfg(feature = "select")]
 pub use imp::io_mpx::sys_select;
 #[cfg(feature = "epoll")]

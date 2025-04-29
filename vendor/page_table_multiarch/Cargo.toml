@@ -10,11 +10,13 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
-edition = "2021"
+edition = "2024"
+rust-version = "1.85"
 name = "page_table_multiarch"
-version = "0.4.1"
+version = "0.5.1"
 authors = ["Yuekai Jia <equation618@gmail.com>"]
 build = false
+autolib = false
 autobins = false
 autoexamples = false
 autotests = false
@@ -48,17 +50,17 @@ rustc-args = [
 name = "page_table_multiarch"
 path = "src/lib.rs"
 
-[dependencies.log]
-version = "0.4"
-
-[dependencies.memory_addr]
-version = "0.3"
+[dependencies]
+log = "0.4"
+memory_addr = "0.3"
 
 [dependencies.page_table_entry]
-version = "0.4.1"
+version = "0.5.1"
+path = "../page_table_entry"
 
 [target.'cfg(any(target_arch = "riscv32", target_arch = "riscv64", doc))'.dependencies.riscv]
-version = "0.11"
+version = "0.12"
+default-features = false
 
-[target.'cfg(any(target_arch = "x86_64", doc))'.dependencies.x86]
-version = "0.52"
+[target.'cfg(any(target_arch = "x86_64", doc))'.dependencies]
+x86 = "0.52"

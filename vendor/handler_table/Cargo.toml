@@ -12,9 +12,10 @@
 [package]
 edition = "2021"
 name = "handler_table"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Yuekai Jia <equation618@gmail.com>"]
 build = false
+autolib = false
 autobins = false
 autoexamples = false
 autotests = false

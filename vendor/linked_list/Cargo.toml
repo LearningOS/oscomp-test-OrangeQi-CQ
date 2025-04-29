@@ -14,10 +14,21 @@ edition = "2021"
 name = "linked_list"
 version = "0.1.0"
 authors = ["Wedson Almeida Filho <wedsonaf@google.com>"]
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "Linked lists that supports arbitrary removal in constant time"
 homepage = "https://github.com/arceos-org/arceos"
 documentation = "https://arceos-org.github.io/linked_list"
+readme = false
 license = "GPL-2.0-or-later"
 repository = "https://github.com/arceos-org/linked_list"
+
+[lib]
+name = "linked_list"
+path = "src/lib.rs"
 
 [dependencies]

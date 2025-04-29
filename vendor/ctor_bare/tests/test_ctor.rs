@@ -1,6 +1,5 @@
-use std::sync::{atomic::AtomicUsize, Mutex};
-
-use ctor_bare::*;
+use ctor_bare::register_ctor;
+use std::sync::{Mutex, atomic::AtomicUsize};
 
 static INIT_NUM: AtomicUsize = AtomicUsize::new(0);
 

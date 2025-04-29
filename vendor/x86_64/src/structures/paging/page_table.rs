@@ -97,6 +97,13 @@ impl PageTableEntry {
     }
 }
 
+impl Default for PageTableEntry {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl fmt::Debug for PageTableEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut f = f.debug_struct("PageTableEntry");
@@ -346,8 +353,8 @@ impl From<PageTableIndex> for usize {
 #[cfg(feature = "step_trait")]
 impl Step for PageTableIndex {
     #[inline]
-    fn steps_between(start: &Self, end: &Self) -> Option<usize> {
-        end.0.checked_sub(start.0).map(usize::from)
+    fn steps_between(start: &Self, end: &Self) -> (usize, Option<usize>) {
+        Step::steps_between(&start.0, &end.0)
     }
 
     #[inline]

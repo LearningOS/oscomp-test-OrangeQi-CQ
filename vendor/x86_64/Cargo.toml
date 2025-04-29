@@ -13,7 +13,7 @@
 edition = "2018"
 rust-version = "1.59"
 name = "x86_64"
-version = "0.15.1"
+version = "0.15.2"
 authors = [
     "Gerd Zellweger <mail@gerdzellweger.com>",
     "Eric Kidd <git@randomhacks.net>",
@@ -22,6 +22,12 @@ authors = [
     "John Ericson <John_Ericson@Yahoo.com>",
     "Rex Lunae <rexlunae@gmail.com>",
 ]
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "Support for x86_64 specific instructions, registers, and structures."
 documentation = "https://docs.rs/x86_64"
 readme = "README.md"
@@ -54,6 +60,10 @@ replace = """
 # {{version}} – {{date}}"""
 search = "# Unreleased"
 
+[lib]
+name = "x86_64"
+path = "src/lib.rs"
+
 [dependencies.bit_field]
 version = "0.10.1"
 
@@ -83,3 +93,8 @@ nightly = [
     "asm_const",
 ]
 step_trait = []
+
+[lints.rust.unexpected_cfgs]
+level = "warn"
+priority = 0
+check-cfg = ["cfg(kani)"]

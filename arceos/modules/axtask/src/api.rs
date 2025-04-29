@@ -1,8 +1,13 @@
 //! Task APIs for multi-task configuration.
 
-use alloc::{string::String, sync::Arc, sync::Weak};
+use alloc::{
+    string::String,
+    sync::{Arc, Weak},
+};
 
-pub(crate) use crate::run_queue::{AxRunQueue, RUN_QUEUE};
+use kernel_guard::NoPreemptIrqSave;
+
+pub(crate) use crate::run_queue::{current_run_queue, select_run_queue};
 
 #[doc(cfg(feature = "multitask"))]
 pub use crate::task::{CurrentTask, TaskId, TaskInner};
@@ -13,9 +18,14 @@ pub use crate::wait_queue::WaitQueue;
 
 /// The reference type of a task.
 pub type AxTaskRef = Arc<AxTask>;
+
+/// The weak reference type of a task.
 pub type WeakAxTaskRef = Weak<AxTask>;
 
 pub use crate::task::TaskState;
+
+/// The wrapper type for [`cpumask::CpuMask`] with SMP configuration.
+pub type AxCpuMask = cpumask::CpuMask<{ axconfig::SMP }>;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "sched_rr")] {
@@ -80,6 +90,8 @@ pub fn init_scheduler() {
 /// Initializes the task scheduler for secondary CPUs.
 pub fn init_scheduler_secondary() {
     crate::run_queue::init_secondary();
+    #[cfg(feature = "irq")]
+    crate::timers::init();
 }
 
 /// Handles periodic timer ticks for the task manager.
@@ -88,14 +100,17 @@ pub fn init_scheduler_secondary() {
 #[cfg(feature = "irq")]
 #[doc(cfg(feature = "irq"))]
 pub fn on_timer_tick() {
+    use kernel_guard::NoOp;
     crate::timers::check_events();
-    RUN_QUEUE.lock().scheduler_timer_tick();
+    // Since irq and preemption are both disabled here,
+    // we can get current run queue with the default `kernel_guard::NoOp`.
+    current_run_queue::<NoOp>().scheduler_timer_tick();
 }
 
 /// Adds the given task to the run queue, returns the task reference.
 pub fn spawn_task(task: TaskInner) -> AxTaskRef {
     let task_ref = task.into_arc();
-    RUN_QUEUE.lock().add_task(task_ref.clone());
+    select_run_queue::<NoPreemptIrqSave>(&task_ref).add_task(task_ref.clone());
     task_ref
 }
 
@@ -132,13 +147,47 @@ where
 ///
 /// [CFS]: https://en.wikipedia.org/wiki/Completely_Fair_Scheduler
 pub fn set_priority(prio: isize) -> bool {
-    RUN_QUEUE.lock().set_current_priority(prio)
+    current_run_queue::<NoPreemptIrqSave>().set_current_priority(prio)
+}
+
+/// Set the affinity for the current task.
+/// [`AxCpuMask`] is used to specify the CPU affinity.
+/// Returns `true` if the affinity is set successfully.
+///
+/// TODO: support set the affinity for other tasks.
+pub fn set_current_affinity(cpumask: AxCpuMask) -> bool {
+    if cpumask.is_empty() {
+        false
+    } else {
+        let curr = current().clone();
+
+        curr.set_cpumask(cpumask);
+        // After setting the affinity, we need to check if current cpu matches
+        // the affinity. If not, we need to migrate the task to the correct CPU.
+        #[cfg(feature = "smp")]
+        if !cpumask.get(axhal::cpu::this_cpu_id()) {
+            const MIGRATION_TASK_STACK_SIZE: usize = 4096;
+            // Spawn a new migration task for migrating.
+            let migration_task = TaskInner::new(
+                move || crate::run_queue::migrate_entry(curr),
+                "migration-task".into(),
+                MIGRATION_TASK_STACK_SIZE,
+            )
+            .into_arc();
+
+            // Migrate the current task to the correct CPU using the migration task.
+            current_run_queue::<NoPreemptIrqSave>().migrate_current(migration_task);
+
+            assert!(cpumask.get(axhal::cpu::this_cpu_id()), "Migration failed");
+        }
+        true
+    }
 }
 
 /// Current task gives up the CPU time voluntarily, and switches to another
 /// ready task.
 pub fn yield_now() {
-    RUN_QUEUE.lock().yield_current();
+    current_run_queue::<NoPreemptIrqSave>().yield_current()
 }
 
 /// Current task is going to sleep for the given duration.
@@ -153,14 +202,14 @@ pub fn sleep(dur: core::time::Duration) {
 /// If the feature `irq` is not enabled, it uses busy-wait instead.
 pub fn sleep_until(deadline: axhal::time::TimeValue) {
     #[cfg(feature = "irq")]
-    RUN_QUEUE.lock().sleep_until(deadline);
+    current_run_queue::<NoPreemptIrqSave>().sleep_until(deadline);
     #[cfg(not(feature = "irq"))]
     axhal::time::busy_wait_until(deadline);
 }
 
 /// Exits the current task.
 pub fn exit(exit_code: i32) -> ! {
-    RUN_QUEUE.lock().exit_current(exit_code)
+    current_run_queue::<NoPreemptIrqSave>().exit_current(exit_code)
 }
 
 /// The idle task routine.

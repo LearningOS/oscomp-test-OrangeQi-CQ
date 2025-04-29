@@ -42,7 +42,7 @@ const LOGO: &str = r#"
 d88P     888 888      "Y8888P  "Y8888   "Y88888P"   "Y8888P"
 "#;
 
-extern "C" {
+unsafe extern "C" {
     fn main();
 }
 
@@ -100,7 +100,7 @@ fn is_init_ok() -> bool {
 ///
 /// In multi-core environment, this function is called on the primary CPU,
 /// and the secondary CPUs call [`rust_main_secondary`].
-#[cfg_attr(not(test), no_mangle)]
+#[cfg_attr(not(test), unsafe(no_mangle))]
 pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
     ax_println!("{}", LOGO);
     ax_println!(
@@ -108,16 +108,16 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
         arch = {}\n\
         platform = {}\n\
         target = {}\n\
-        smp = {}\n\
         build_mode = {}\n\
         log_level = {}\n\
+        smp = {}\n\
         ",
-        option_env!("AX_ARCH").unwrap_or(""),
-        option_env!("AX_PLATFORM").unwrap_or(""),
+        axconfig::ARCH,
+        axconfig::PLATFORM,
         option_env!("AX_TARGET").unwrap_or(""),
-        option_env!("AX_SMP").unwrap_or(""),
         option_env!("AX_MODE").unwrap_or(""),
         option_env!("AX_LOG").unwrap_or(""),
+        axconfig::SMP,
     );
     #[cfg(feature = "rtc")]
     ax_println!(
@@ -183,10 +183,10 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
         init_tls();
     }
 
+    ctor_bare::call_ctors();
+
     info!("Primary CPU {} init OK.", cpu_id);
     INITED_CPUS.fetch_add(1, Ordering::Relaxed);
-
-    ctor_bare::call_ctors();
 
     while !is_init_ok() {
         core::hint::spin_loop();
@@ -205,7 +205,7 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
 
 #[cfg(feature = "alloc")]
 fn init_allocator() {
-    use axhal::mem::{memory_regions, phys_to_virt, MemRegionFlags};
+    use axhal::mem::{MemRegionFlags, memory_regions, phys_to_virt};
 
     info!("Initialize global memory allocator...");
     info!("  use {} allocator.", axalloc::global_allocator().name());

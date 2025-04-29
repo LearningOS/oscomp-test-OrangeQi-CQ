@@ -7,11 +7,46 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+## [v0.12.1] - 2024-10-20
+
+### Changed
+
+- Update critical-section to 1.2.0
+
+## [v0.12.0] - 2024-10-19
+
+### Added
+
+- `riscv-macros` crate for `riscv-pac` enums.
+- Bump MSRV to 1.61.
+- Implementation of `riscv-pac` traits for `Interrupt` and `Exception` enums.
+- Tests for the `riscv-pac` trait implementations of `Interrupt` and `Exception` enums.
+- Add `Mcause::from(usize)` for use in unit tests
+- Add `Mstatus::from(usize)` for use in unit tests
+- Add `Mstatus.bits()`
+- Add `Eq` and `PartialEq` for `pmpcfgx::{Range, Permission}`
+- Add `Mstatus::update_*` helpers to manipulate Mstatus values without touching
+  the CSR
+- Export `riscv::register::macros` module macros for external use
+- Add `riscv::register::mcountinhibit` module for `mcountinhibit` CSR
+- Add `Mcounteren` in-memory update functions 
+- Add `Mstatus` vector extension support
+- Add fallible counterparts to all functions that `panic`
+- Add `riscv-pac` as a dependency
+- Add CSR-defining macros to create in-memory types
+
+### Fixed
+
+- Fixed `sip::set_ssoft` and `sip::clear_ssoft` using wrong address
+- Fixed assignment in `mstatus` unit tests.
+- delay implementation does not use binary labels in inline assembly.
+
 ## [v0.11.1] - 2024-02-15
 
 ### Changed
 
 - Made `asm::wfi`, `fence`, `fence_i` and `sfence` safe (ie, removed `unsafe` from their definitions)
+- Made `cfg` variable selection more robust for custom targets
 
 ## [v0.11.0] - 2024-01-14
 

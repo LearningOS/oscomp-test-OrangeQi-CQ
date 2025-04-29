@@ -11,9 +11,16 @@
 
 [package]
 edition = "2021"
+rust-version = "1.57"
 name = "crate_interface"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["Yuekai Jia <equation618@gmail.com>"]
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "Provides a way to define an interface (trait) in a crate, but can implement or use it in any crate."
 homepage = "https://github.com/arceos-org/arceos"
 documentation = "https://docs.rs/crate_interface"
@@ -31,7 +38,13 @@ license = "GPL-3.0-or-later OR Apache-2.0 OR MulanPSL-2.0"
 repository = "https://github.com/arceos-org/crate_interface"
 
 [lib]
+name = "crate_interface"
+path = "src/lib.rs"
 proc-macro = true
+
+[[test]]
+name = "test_crate_interface"
+path = "tests/test_crate_interface.rs"
 
 [dependencies.proc-macro2]
 version = "1.0"

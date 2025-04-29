@@ -1,9 +1,7 @@
 use crate::structures::paging::{
-    frame::PhysFrame,
-    frame_alloc::{FrameAllocator, FrameDeallocator},
     mapper::*,
-    page::{AddressNotAligned, Page, PageRangeInclusive, Size1GiB, Size2MiB, Size4KiB},
-    page_table::{FrameError, PageTable, PageTableEntry, PageTableFlags, PageTableLevel},
+    page::AddressNotAligned,
+    page_table::{FrameError, PageTable, PageTableEntry, PageTableLevel},
 };
 
 /// A Mapper implementation that relies on a PhysAddr to VirtAddr conversion function.
@@ -152,7 +150,7 @@ impl<'a, P: PageTableFrameMapping> MappedPageTable<'a, P> {
     }
 }
 
-impl<'a, P: PageTableFrameMapping> Mapper<Size1GiB> for MappedPageTable<'a, P> {
+impl<P: PageTableFrameMapping> Mapper<Size1GiB> for MappedPageTable<'_, P> {
     #[inline]
     unsafe fn map_to_with_table_flags<A>(
         &mut self,
@@ -260,7 +258,7 @@ impl<'a, P: PageTableFrameMapping> Mapper<Size1GiB> for MappedPageTable<'a, P> {
     }
 }
 
-impl<'a, P: PageTableFrameMapping> Mapper<Size2MiB> for MappedPageTable<'a, P> {
+impl<P: PageTableFrameMapping> Mapper<Size2MiB> for MappedPageTable<'_, P> {
     #[inline]
     unsafe fn map_to_with_table_flags<A>(
         &mut self,
@@ -388,7 +386,7 @@ impl<'a, P: PageTableFrameMapping> Mapper<Size2MiB> for MappedPageTable<'a, P> {
     }
 }
 
-impl<'a, P: PageTableFrameMapping> Mapper<Size4KiB> for MappedPageTable<'a, P> {
+impl<P: PageTableFrameMapping> Mapper<Size4KiB> for MappedPageTable<'_, P> {
     #[inline]
     unsafe fn map_to_with_table_flags<A>(
         &mut self,
@@ -532,7 +530,7 @@ impl<'a, P: PageTableFrameMapping> Mapper<Size4KiB> for MappedPageTable<'a, P> {
     }
 }
 
-impl<'a, P: PageTableFrameMapping> Translate for MappedPageTable<'a, P> {
+impl<P: PageTableFrameMapping> Translate for MappedPageTable<'_, P> {
     #[allow(clippy::inconsistent_digit_grouping)]
     fn translate(&self, addr: VirtAddr) -> TranslateResult {
         let p4 = &self.level_4_table;
@@ -549,6 +547,7 @@ impl<'a, P: PageTableFrameMapping> Translate for MappedPageTable<'a, P> {
             Err(PageTableWalkError::MappedToHugePage) => {
                 let entry = &p3[addr.p3_index()];
                 let frame = PhysFrame::containing_address(entry.addr());
+                #[allow(clippy::unusual_byte_groupings)]
                 let offset = addr.as_u64() & 0o_777_777_7777;
                 let flags = entry.flags();
                 return TranslateResult::Mapped {
@@ -564,6 +563,7 @@ impl<'a, P: PageTableFrameMapping> Translate for MappedPageTable<'a, P> {
             Err(PageTableWalkError::MappedToHugePage) => {
                 let entry = &p2[addr.p2_index()];
                 let frame = PhysFrame::containing_address(entry.addr());
+                #[allow(clippy::unusual_byte_groupings)]
                 let offset = addr.as_u64() & 0o_777_7777;
                 let flags = entry.flags();
                 return TranslateResult::Mapped {
@@ -594,7 +594,7 @@ impl<'a, P: PageTableFrameMapping> Translate for MappedPageTable<'a, P> {
     }
 }
 
-impl<'a, P: PageTableFrameMapping> CleanUp for MappedPageTable<'a, P> {
+impl<P: PageTableFrameMapping> CleanUp for MappedPageTable<'_, P> {
     #[inline]
     unsafe fn clean_up<D>(&mut self, frame_deallocator: &mut D)
     where

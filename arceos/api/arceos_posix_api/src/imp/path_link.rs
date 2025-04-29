@@ -6,9 +6,9 @@ use spin::RwLock;
 
 use alloc::string::{String, ToString};
 use axerrno::{AxError, AxResult};
-use axfs::{api::canonicalize, CURRENT_DIR_PATH};
+use axfs::api::{canonicalize, current_dir};
 
-use crate::FD_TABLE;
+use super::fd_ops::FD_TABLE;
 
 /// 一个规范化的文件路径表示
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
@@ -47,13 +47,11 @@ impl FilePath {
         }
 
         // 查找最后一个斜杠，考虑可能的尾部斜杠
-        let path = self.as_str();
-        let pos = if path.ends_with('/') {
-            path[..path.len() - 1].rfind('/')
-        } else {
-            path.rfind('/')
+        let mut path = self.as_str();
+        if path.ends_with('/') {
+            path = path.strip_suffix('/').unwrap();
         }
-        .ok_or(AxError::NotADirectory)?;
+        let pos = path.rfind('/').ok_or(AxError::NotFound)?;
 
         Ok(&path[..=pos])
     }
@@ -64,13 +62,11 @@ impl FilePath {
             return Ok("/");
         }
 
-        let path = self.as_str();
-        let start_pos = if path.ends_with('/') {
-            path[..path.len() - 1].rfind('/')
-        } else {
-            path.rfind('/')
+        let mut path = self.as_str();
+        if path.ends_with('/') {
+            path = path.strip_suffix('/').unwrap();
         }
-        .ok_or(AxError::NotFound)?;
+        let start_pos = path.rfind('/').ok_or(AxError::NotFound)?;
 
         let end_pos = if path.ends_with('/') {
             path.len() - 1
@@ -95,6 +91,7 @@ impl FilePath {
         !self.is_dir()
     }
 
+    /// Whether the path exists
     pub fn exists(&self) -> bool {
         axfs::api::absolute_path_exists(&self.0)
     }
@@ -160,9 +157,9 @@ pub enum LinkError {
     NotFile,     // 不是文件
 }
 
-impl Into<AxError> for LinkError {
-    fn into(self) -> AxError {
-        match self {
+impl From<LinkError> for AxError {
+    fn from(err: LinkError) -> AxError {
+        match err {
             LinkError::LinkExists => AxError::AlreadyExists,
             LinkError::InvalidPath => AxError::InvalidInput,
             LinkError::NotFound => AxError::NotFound,
@@ -171,9 +168,10 @@ impl Into<AxError> for LinkError {
     }
 }
 
+/// A global hardlink manager
 pub static HARDLINK_MANAGER: HardlinkManager = HardlinkManager::new();
 
-/// 硬链接管理器
+/// A manager for hardlinks
 pub struct HardlinkManager {
     inner: RwLock<LinkManagerInner>,
 }
@@ -259,9 +257,8 @@ impl HardlinkManager {
     /// 移除链接
     /// 如果链接不存在，则返回 `None`，否则返回链接的目标路径
     fn atomic_link_remove(&self, inner: &mut LinkManagerInner, src: &FilePath) -> Option<String> {
-        inner.links.remove(src.as_str()).map(|dst| {
-            self.decrease_ref_count(inner, &dst);
-            dst
+        inner.links.remove(src.as_str()).inspect(|dst| {
+            self.decrease_ref_count(inner, dst);
         })
     }
 
@@ -286,6 +283,7 @@ impl HardlinkManager {
     }
 }
 
+/// A constant representing the current working directory
 pub const AT_FDCWD: isize = -100;
 
 /// 处理路径并返回规范化后的 `FilePath`
@@ -309,7 +307,7 @@ pub fn handle_file_path(
                 axlog::warn!("路径地址为空");
                 return Err(AxError::BadAddress);
             }
-            crate::utils::char_ptr_to_str(addr as *const i8)
+            crate::utils::char_ptr_to_str(addr as *const _)
                 .map_err(|_| AxError::NotFound)?
                 .to_string()
         }
@@ -376,7 +374,7 @@ fn handle_relative_path(dir_fd: isize, path: &str) -> AxResult<String> {
 }
 
 fn prepend_cwd(path: &str) -> AxResult<String> {
-    let cwd = CURRENT_DIR_PATH.lock().clone();
+    let cwd = current_dir().map_err(|_| AxError::NotFound)?;
     debug_assert!(cwd.ends_with('/'), "当前工作目录路径应以 '/' 结尾");
     Ok(format!("{}{}", cwd, path))
 }
@@ -386,7 +384,8 @@ fn adjust_path_suffix(mut path: String, force_dir: bool) -> String {
     if force_dir && !path.ends_with('/') {
         path.push('/');
     }
-    if path.ends_with('.') { // 防止路径以 '.' 结尾
+    if path.ends_with('.') {
+        // 防止路径以 '.' 结尾
         path.push('/');
     }
     path

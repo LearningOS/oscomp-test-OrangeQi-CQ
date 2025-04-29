@@ -1,7 +1,5 @@
-#![allow(unused_imports)]
-
-use core::arch::asm;
-use memory_addr::{PhysAddr, VirtAddr};
+use core::arch::naked_asm;
+use memory_addr::VirtAddr;
 
 /// Saved registers when a trap (exception) occurs.
 #[repr(C)]
@@ -120,41 +118,43 @@ impl UspaceContext {
     ///
     /// This function is unsafe because it changes processor mode and the stack.
     #[inline(never)]
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub unsafe fn enter_uspace(&self, kstack_top: VirtAddr) -> ! {
         super::disable_irqs();
         // We do not handle traps that occur at the current exception level,
         // so the kstack ptr(`sp_el1`) will not change during running in user space.
         // Then we don't need to save the `sp_el1` to the taskctx.
-        asm!(
-            "
-            mov     sp, x1
-            ldp     x30, x9, [x0, 30 * 8]
-            ldp     x10, x11, [x0, 32 * 8]
-            msr     sp_el0, x9
-            msr     elr_el1, x10
-            msr     spsr_el1, x11
+        unsafe {
+            core::arch::asm!(
+                "
+                mov     sp, x1
+                ldp     x30, x9, [x0, 30 * 8]
+                ldp     x10, x11, [x0, 32 * 8]
+                msr     sp_el0, x9
+                msr     elr_el1, x10
+                msr     spsr_el1, x11
 
-            ldp     x28, x29, [x0, 28 * 8]
-            ldp     x26, x27, [x0, 26 * 8]
-            ldp     x24, x25, [x0, 24 * 8]
-            ldp     x22, x23, [x0, 22 * 8]
-            ldp     x20, x21, [x0, 20 * 8]
-            ldp     x18, x19, [x0, 18 * 8]
-            ldp     x16, x17, [x0, 16 * 8]
-            ldp     x14, x15, [x0, 14 * 8]
-            ldp     x12, x13, [x0, 12 * 8]
-            ldp     x10, x11, [x0, 10 * 8]
-            ldp     x8, x9, [x0, 8 * 8]
-            ldp     x6, x7, [x0, 6 * 8]
-            ldp     x4, x5, [x0, 4 * 8]
-            ldp     x2, x3, [x0, 2 * 8]
-            ldp     x0, x1, [x0]
-            eret",
-            in("x0") &self.0,
-            in("x1") kstack_top.as_usize() ,
-            options(noreturn),
-        )
+                ldp     x28, x29, [x0, 28 * 8]
+                ldp     x26, x27, [x0, 26 * 8]
+                ldp     x24, x25, [x0, 24 * 8]
+                ldp     x22, x23, [x0, 22 * 8]
+                ldp     x20, x21, [x0, 20 * 8]
+                ldp     x18, x19, [x0, 18 * 8]
+                ldp     x16, x17, [x0, 16 * 8]
+                ldp     x14, x15, [x0, 14 * 8]
+                ldp     x12, x13, [x0, 12 * 8]
+                ldp     x10, x11, [x0, 10 * 8]
+                ldp     x8, x9, [x0, 8 * 8]
+                ldp     x6, x7, [x0, 6 * 8]
+                ldp     x4, x5, [x0, 4 * 8]
+                ldp     x2, x3, [x0, 2 * 8]
+                ldp     x0, x1, [x0]
+                eret",
+                in("x0") &self.0,
+                in("x1") kstack_top.as_usize() ,
+                options(noreturn),
+            )
+        }
     }
 }
 
@@ -208,7 +208,7 @@ pub struct TaskContext {
     pub lr: u64, // r30
     /// The `ttbr0_el1` register value, i.e., the page table root.
     #[cfg(feature = "uspace")]
-    pub ttbr0_el1: PhysAddr,
+    pub ttbr0_el1: memory_addr::PhysAddr,
     #[cfg(feature = "fp_simd")]
     pub fp_state: FpState,
 }
@@ -238,7 +238,7 @@ impl TaskContext {
     ///
     /// If not set, it means that this task is a kernel task and only `ttbr1_el1` register will be used.
     #[cfg(feature = "uspace")]
-    pub fn set_page_table_root(&mut self, ttbr0_el1: PhysAddr) {
+    pub fn set_page_table_root(&mut self, ttbr0_el1: memory_addr::PhysAddr) {
         self.ttbr0_el1 = ttbr0_el1;
     }
 
@@ -261,7 +261,7 @@ impl TaskContext {
 
 #[naked]
 unsafe extern "C" fn context_switch(_current_task: &mut TaskContext, _next_task: &TaskContext) {
-    asm!(
+    naked_asm!(
         "
         // save old context (callee-saved registers)
         stp     x29, x30, [x0, 12 * 8]
@@ -286,14 +286,13 @@ unsafe extern "C" fn context_switch(_current_task: &mut TaskContext, _next_task:
         ldp     x29, x30, [x1, 12 * 8]
 
         ret",
-        options(noreturn),
     )
 }
 
 #[naked]
 #[cfg(feature = "fp_simd")]
 unsafe extern "C" fn fpstate_switch(_current_fpstate: &mut FpState, _next_fpstate: &FpState) {
-    asm!(
+    naked_asm!(
         "
         // save fp/neon context
         mrs     x9, fpcr
@@ -341,6 +340,5 @@ unsafe extern "C" fn fpstate_switch(_current_fpstate: &mut FpState, _next_fpstat
 
         isb
         ret",
-        options(noreturn),
     )
 }

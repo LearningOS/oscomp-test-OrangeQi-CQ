@@ -1,25 +1,23 @@
-use alloc::{
-    string::{String, ToString},
-    sync::Arc,
-    vec::Vec,
-};
+use alloc::{string::ToString, sync::Arc, vec, vec::Vec};
 use arceos_posix_api::FD_TABLE;
 use axerrno::{AxError, AxResult};
 use axfs::{CURRENT_DIR, CURRENT_DIR_PATH};
 use core::{
+    alloc::Layout,
     cell::UnsafeCell,
     sync::atomic::{AtomicU64, Ordering},
 };
+use spin::Once;
 
 use crate::ctypes::{CloneFlags, TimeStat, WaitStatus};
 use axhal::{
     arch::{TrapFrame, UspaceContext},
-    time::{monotonic_time_nanos, NANOS_PER_MICROS, NANOS_PER_SEC},
+    time::{NANOS_PER_MICROS, NANOS_PER_SEC, monotonic_time_nanos},
 };
 use axmm::AddrSpace;
 use axns::{AxNamespace, AxNamespaceIf};
 use axsync::Mutex;
-use axtask::{current, AxTaskRef, TaskExtRef, TaskInner};
+use axtask::{AxTaskRef, TaskExtRef, TaskInner, current};
 
 /// Task extended data for the monolithic kernel.
 pub struct TaskExt {
@@ -43,10 +41,19 @@ pub struct TaskExt {
     pub ns: AxNamespace,
     /// The time statistics
     pub time: UnsafeCell<TimeStat>,
+    /// The user heap bottom
+    pub heap_bottom: AtomicU64,
+    /// The user heap top
+    pub heap_top: AtomicU64,
 }
 
 impl TaskExt {
-    pub fn new(proc_id: usize, uctx: UspaceContext, aspace: Arc<Mutex<AddrSpace>>) -> Self {
+    pub fn new(
+        proc_id: usize,
+        uctx: UspaceContext,
+        aspace: Arc<Mutex<AddrSpace>>,
+        heap_bottom: u64,
+    ) -> Self {
         Self {
             proc_id,
             parent_id: AtomicU64::new(1),
@@ -56,6 +63,8 @@ impl TaskExt {
             aspace,
             ns: AxNamespace::new_thread_local(),
             time: TimeStat::new().into(),
+            heap_bottom: AtomicU64::new(heap_bottom),
+            heap_top: AtomicU64::new(heap_bottom),
         }
     }
 
@@ -81,40 +90,36 @@ impl TaskExt {
                 );
                 unsafe { curr.task_ext().uctx.enter_uspace(kstack_top) };
             },
-            String::from(current().id_name()),
-            crate::config::KERNEL_STACK_SIZE,
+            current().id_name(),
+            axconfig::plat::KERNEL_STACK_SIZE,
         );
 
         let current_task = current();
-
         let mut current_aspace = current_task.task_ext().aspace.lock();
         let new_aspace = current_aspace.clone_or_err()?;
         new_task
             .ctx_mut()
             .set_page_table_root(new_aspace.page_table_root());
 
-        let mut trap_frame =
-            read_trapframe_from_kstack(current_task.get_kernel_stack_top().unwrap());
-        trap_frame.set_ret_code(0);
-        trap_frame.sepc += 4;
-
+        let trap_frame = read_trapframe_from_kstack(current_task.get_kernel_stack_top().unwrap());
+        let mut new_uctx = UspaceContext::from(&trap_frame);
         if let Some(stack) = stack {
-            trap_frame.set_user_sp(stack);
+            new_uctx.set_sp(stack);
         }
-
-        let new_uctx = UspaceContext::from(&trap_frame);
-
+        // Skip current instruction
+        new_uctx.set_ip(new_uctx.get_ip() + 4);
+        new_uctx.set_retval(0);
         let return_id: u64 = new_task.id().as_u64();
         let new_task_ext = TaskExt::new(
             return_id as usize,
             new_uctx,
             Arc::new(Mutex::new(new_aspace)),
+            0,
         );
         new_task_ext.ns_init_new();
         new_task.init_task_ext(new_task_ext);
         let new_task_ref = axtask::spawn_task(new_task);
         current_task.task_ext().children.lock().push(new_task_ref);
-
         Ok(return_id)
     }
 
@@ -132,6 +137,7 @@ impl TaskExt {
         self.parent_id.load(Ordering::Acquire)
     }
 
+    #[allow(unused)]
     pub(crate) fn set_parent(&self, parent_id: u64) {
         self.parent_id.store(parent_id, Ordering::Release);
     }
@@ -162,36 +168,47 @@ impl TaskExt {
         }
     }
 
-    pub(crate) fn time_stat_when_switch_from(&self, current_tick: usize) {
-        let time = self.time.get();
-        unsafe {
-            (*time).switch_from_old_task(current_tick);
-        }
-    }
-
-    pub(crate) fn time_stat_when_switch_to(&self, current_tick: usize) {
-        let time = self.time.get();
-        unsafe {
-            (*time).switch_to_new_task(current_tick);
-        }
-    }
-
     pub(crate) fn time_stat_output(&self) -> (usize, usize) {
         let time = self.time.get();
         unsafe { (*time).output() }
     }
+
+    pub(crate) fn get_heap_bottom(&self) -> u64 {
+        self.heap_bottom.load(Ordering::Acquire)
+    }
+
+    #[allow(unused)]
+    pub(crate) fn set_heap_bottom(&self, bottom: u64) {
+        self.heap_bottom.store(bottom, Ordering::Release)
+    }
+
+    pub(crate) fn get_heap_top(&self) -> u64 {
+        self.heap_top.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn set_heap_top(&self, top: u64) {
+        self.heap_top.store(top, Ordering::Release)
+    }
 }
 
 struct AxNamespaceImpl;
-
 #[crate_interface::impl_interface]
 impl AxNamespaceIf for AxNamespaceImpl {
-    #[inline(never)]
     fn current_namespace_base() -> *mut u8 {
+        // Namespace for kernel task
+        static KERNEL_NS_BASE: Once<usize> = Once::new();
         let current = axtask::current();
         // Safety: We only check whether the task extended data is null and do not access it.
         if unsafe { current.task_ext_ptr() }.is_null() {
-            return axns::AxNamespace::global().base();
+            return *(KERNEL_NS_BASE.call_once(|| {
+                let global_ns = AxNamespace::global();
+                let layout = Layout::from_size_align(global_ns.size(), 64).unwrap();
+                // Safety: The global namespace is a static readonly variable and will not be dropped.
+                let dst = unsafe { alloc::alloc::alloc(layout) };
+                let src = global_ns.base();
+                unsafe { core::ptr::copy_nonoverlapping(src, dst, global_ns.size()) };
+                dst as usize
+            })) as *mut u8;
         }
         current.task_ext().ns.base()
     }
@@ -199,7 +216,11 @@ impl AxNamespaceIf for AxNamespaceImpl {
 
 axtask::def_task_ext!(TaskExt);
 
-pub fn spawn_user_task(aspace: Arc<Mutex<AddrSpace>>, uctx: UspaceContext) -> AxTaskRef {
+pub fn spawn_user_task(
+    aspace: Arc<Mutex<AddrSpace>>,
+    uctx: UspaceContext,
+    heap_bottom: u64,
+) -> AxTaskRef {
     let mut task = TaskInner::new(
         || {
             let curr = axtask::current();
@@ -213,15 +234,21 @@ pub fn spawn_user_task(aspace: Arc<Mutex<AddrSpace>>, uctx: UspaceContext) -> Ax
             unsafe { curr.task_ext().uctx.enter_uspace(kstack_top) };
         },
         "userboot".into(),
-        crate::config::KERNEL_STACK_SIZE,
+        axconfig::plat::KERNEL_STACK_SIZE,
     );
     task.ctx_mut()
         .set_page_table_root(aspace.lock().page_table_root());
-    task.init_task_ext(TaskExt::new(task.id().as_u64() as usize, uctx, aspace));
+    task.init_task_ext(TaskExt::new(
+        task.id().as_u64() as usize,
+        uctx,
+        aspace,
+        heap_bottom,
+    ));
     task.task_ext().ns_init_new();
     axtask::spawn_task(task)
 }
 
+#[allow(unused)]
 pub fn write_trapframe_to_kstack(kstack_top: usize, trap_frame: &TrapFrame) {
     let trap_frame_size = core::mem::size_of::<TrapFrame>();
     let trap_frame_ptr = (kstack_top - trap_frame_size) as *mut TrapFrame;
@@ -245,7 +272,7 @@ pub fn wait_pid(pid: i32, exit_code_ptr: *mut i32) -> Result<u64, WaitStatus> {
     for (index, child) in curr_task.task_ext().children.lock().iter().enumerate() {
         if pid <= 0 {
             if pid == 0 {
-                axlog::warn!("Don't support for process group.");
+                warn!("Don't support for process group.");
             }
 
             answer_status = WaitStatus::Running;
@@ -299,10 +326,10 @@ pub fn wait_pid(pid: i32, exit_code_ptr: *mut i32) -> Result<u64, WaitStatus> {
     Err(answer_status)
 }
 
-pub fn exec(program_name: &str) -> AxResult<()> {
+pub fn exec(name: &str) -> AxResult<()> {
     let current_task = current();
 
-    let program_name = program_name.to_string();
+    let program_name = name.to_string();
 
     let mut aspace = current_task.task_ext().aspace.lock();
     if Arc::strong_count(&current_task.task_ext().aspace) != 1 {
@@ -313,12 +340,14 @@ pub fn exec(program_name: &str) -> AxResult<()> {
     aspace.unmap_user_areas()?;
     axhal::arch::flush_tlb(None);
 
-    let (entry_point, user_stack_base) = crate::mm::map_elf_sections(&program_name, &mut aspace)
+    let args = vec![program_name];
+
+    let (entry_point, user_stack_base) = crate::mm::load_user_app(&mut (args.into()), &mut aspace)
         .map_err(|_| {
-            error!("Failed to load app {}", program_name);
+            error!("Failed to load app {}", name);
             AxError::NotFound
         })?;
-    current_task.set_name(&program_name);
+    current_task.set_name(name);
 
     let task_ext = unsafe { &mut *(current_task.task_ext_ptr() as *mut TaskExt) };
     task_ext.uctx = UspaceContext::new(entry_point.as_usize(), user_stack_base, 0);

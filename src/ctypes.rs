@@ -204,7 +204,6 @@ impl TimeStat {
         }
         if self.timer_remained_ns > delta {
             self.timer_remained_ns -= delta;
-            return;
         }
     }
 }

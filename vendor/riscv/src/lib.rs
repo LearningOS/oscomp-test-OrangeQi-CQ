@@ -35,10 +35,18 @@
 #![no_std]
 #![allow(clippy::missing_safety_doc)]
 
+pub use paste::paste;
+
 pub mod asm;
+pub mod bits;
 pub mod delay;
 pub mod interrupt;
 pub mod register;
+
+// Re-export crates of the RISC-V ecosystem
+#[cfg(feature = "riscv-macros")]
+pub use riscv_macros::*;
+pub use riscv_pac::*;
 
 #[macro_use]
 mod macros;

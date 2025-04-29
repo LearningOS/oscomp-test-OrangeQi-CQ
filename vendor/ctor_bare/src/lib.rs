@@ -5,11 +5,11 @@ pub use ctor_bare_macros::register_ctor;
 
 /// Placeholder for the `.init_array` section, so that
 /// the `__init_array_start` and `__init_array_end` symbols can be generated.
-#[link_section = ".init_array"]
+#[unsafe(link_section = ".init_array")]
 #[used]
 static _SECTION_PLACE_HOLDER: [u8; 0] = [];
 
-extern "C" {
+unsafe extern "C" {
     fn __init_array_start();
     fn __init_array_end();
 }

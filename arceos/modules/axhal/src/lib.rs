@@ -25,11 +25,9 @@
 //! [cargo test]: https://doc.rust-lang.org/cargo/guide/tests.html
 
 #![no_std]
-#![feature(asm_const)]
 #![feature(naked_functions)]
-#![feature(const_option)]
-#![feature(const_mut_refs)]
 #![feature(doc_auto_cfg)]
+#![feature(sync_unsafe_cell)]
 
 #[allow(unused_imports)]
 #[macro_use]
@@ -61,13 +59,6 @@ pub mod paging;
 /// Console input and output.
 pub mod console {
     pub use super::platform::console::*;
-
-    /// Write a slice of bytes to the console.
-    pub fn write_bytes(bytes: &[u8]) {
-        for c in bytes {
-            putchar(*c);
-        }
-    }
 }
 
 /// Miscellaneous operation, e.g. terminate the system.

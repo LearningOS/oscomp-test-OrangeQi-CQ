@@ -4,8 +4,6 @@
 .DS_Store
 *.elf
 *.bin
-**/target/
-apps/**/Cargo.lock
-testsuits-for-oskernel/
 apps/*/build/
-kernel-qemu
+**/target/
+/.axconfig.*

@@ -17,9 +17,16 @@ authors = [
     "Yuekai Jia <equation618@gmail.com>",
     "ChengXiang Qi <kuangjux@outlook.com>",
 ]
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "Common traits and types for network device (NIC) drivers"
 homepage = "https://github.com/arceos-org/arceos"
 documentation = "https://arceos-org.github.io/axdriver_crates/axdriver_net"
+readme = false
 keywords = [
     "arceos",
     "dirver",
@@ -33,6 +40,14 @@ categories = [
 license = "GPL-3.0-or-later OR Apache-2.0 OR MulanPSL-2.0"
 repository = "https://github.com/arceos-org/axdriver_crates"
 
+[features]
+default = []
+ixgbe = ["dep:ixgbe-driver"]
+
+[lib]
+name = "axdriver_net"
+path = "src/lib.rs"
+
 [dependencies]
 log = "0.4"
 spin = "0.9"
@@ -45,7 +60,3 @@ path = "../axdriver_base"
 git = "https://github.com/KuangjuX/ixgbe-driver.git"
 rev = "8e5eb74"
 optional = true
-
-[features]
-default = []
-ixgbe = ["dep:ixgbe-driver"]

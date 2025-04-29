@@ -1,6 +1,6 @@
 //! Low-level filesystem operations.
 
-use axerrno::{ax_err, ax_err_type, AxError, AxResult};
+use axerrno::{AxError, AxResult, ax_err, ax_err_type};
 use axfs_vfs::{VfsError, VfsNodeRef};
 use axio::SeekFrom;
 use cap_access::{Cap, WithCap};
@@ -78,7 +78,7 @@ impl OpenOptions {
         self.write = write;
     }
     /// Sets the option for execute access.
-    pub fn execute(&mut self, execute:bool) {
+    pub fn execute(&mut self, execute: bool) {
         self.execute = execute;
     }
     /// Sets the option for the append mode.
@@ -104,6 +104,25 @@ impl OpenOptions {
     /// check whether contains directory.
     pub fn has_directory(&self) -> bool {
         self.directory
+    }
+
+    /// Sets the create flags.
+    pub fn set_create(mut self, create: bool, create_new: bool) -> Self {
+        self.create = create;
+        self.create_new = create_new;
+        self
+    }
+
+    /// Sets the read flag.
+    pub fn set_read(mut self, read: bool) -> Self {
+        self.read = read;
+        self
+    }
+
+    /// Sets the write flag.
+    pub fn set_write(mut self, write: bool) -> Self {
+        self.write = write;
+        self
     }
 
     const fn is_valid(&self) -> bool {
@@ -158,15 +177,13 @@ impl File {
         };
 
         let attr = node.get_attr()?;
-        debug!("attr: {:?}", attr);
         if attr.is_dir()
-            && (opts.create || opts.create_new || opts.write || opts.append || opts.truncate || opts.execute || opts.read)
+            && (opts.create || opts.create_new || opts.write || opts.append || opts.truncate)
         {
             return ax_err!(IsADirectory);
         }
         let access_cap = opts.into();
         if !perm_to_cap(attr.perm()).contains(access_cap) {
-            debug!("perm: {:?}, cap: {:?}", attr.perm(), access_cap);
             return ax_err!(PermissionDenied);
         }
 
@@ -269,7 +286,6 @@ impl File {
 impl Directory {
     fn access_node(&self, cap: Cap) -> AxResult<&VfsNodeRef> {
         self.node.access_or_err(cap, AxError::PermissionDenied)
-            .inspect_err(|e| debug!("access node failed: {:?}", e))
     }
 
     fn _open_dir_at(dir: Option<&VfsNodeRef>, path: &str, opts: &OpenOptions) -> AxResult<Self> {

@@ -10,29 +10,39 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
-edition = "2021"
+edition = "2024"
 name = "kernel-elf-parser"
-version = "0.1.0"
+version = "0.3.0"
 authors = ["Youjie Zheng <zyj578335934@gmail.com>"]
 build = false
+autolib = false
 autobins = false
 autoexamples = false
 autotests = false
 autobenches = false
 description = "An lightweight ELF parser that parses ELF files and converts them into information needed for kernel building"
+documentation = "https://docs.rs/kernel-elf-parser"
 readme = "README.md"
 keywords = [
     "Starry",
     "ELF",
     "kernel",
-    "no_std",
 ]
+categories = ["no-std"]
 license = "GPL-3.0-or-later OR Apache-2.0 OR MulanPSL-2.0"
-repository = "https://github.com/Starry-OS/elf-parser"
+repository = "https://github.com/Starry-OS/kernel-elf-parser"
 
 [lib]
 name = "kernel_elf_parser"
 path = "src/lib.rs"
+
+[[test]]
+name = "test_dynamic"
+path = "tests/test_dynamic.rs"
+
+[[test]]
+name = "test_static"
+path = "tests/test_static.rs"
 
 [dependencies.axerrno]
 version = "0.1"
@@ -47,7 +57,7 @@ version = "0.4.21"
 version = "0.3"
 
 [dependencies.page_table_entry]
-version = "0.4"
+version = "0.5"
 
 [dependencies.xmas-elf]
-version = "0.9.0"
+version = "0.9"

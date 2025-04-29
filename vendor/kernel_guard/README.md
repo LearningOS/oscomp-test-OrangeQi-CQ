@@ -1,6 +1,8 @@
 # kernel_guard
 
 [![Crates.io](https://img.shields.io/crates/v/kernel_guard)](https://crates.io/crates/kernel_guard)
+[![Docs.rs](https://docs.rs/kernel_guard/badge.svg)](https://docs.rs/kernel_guard)
+[![CI](https://github.com/arceos-org/kernel_guard/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/arceos-org/kernel_guard/actions/workflows/ci.yml)
 
 RAII wrappers to create a critical section with local IRQs or preemption
 disabled, used to implement spin locks in kernel.

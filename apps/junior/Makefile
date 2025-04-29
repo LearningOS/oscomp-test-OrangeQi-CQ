@@ -1,23 +1,26 @@
 ARCH ?= riscv64
 
-RV_TESTCASES := https://github.com/Starry-OS/testcases/releases/download/v0.2/riscv_syscall_testcases.tar.xz
+TESTCASE_URL := https://github.com/Starry-OS/testcases/releases/download/v0.3/$(ARCH)_syscall_testcases.tar.gz
 
 ifeq ($(ARCH), riscv64)
-	PLATFORM_NAME := riscv64-qemu-virt
+    PLATFORM_NAME := riscv64-qemu-virt
+else ifeq ($(ARCH), loongarch64)
+    PLATFORM_NAME := loongarch64-qemu-virt
 else
-	$(error "ARCH" must be "riscv64")
+	$(error "ARCH" must be "riscv64" or "loongarch64")
 endif
 
-build_dir := build/$(ARCH)
+BUILD_DIR := build/$(ARCH)
+TARGET_TAR := $(BUILD_DIR)/$(ARCH)-syscall-testcases.tar.xz
 
 build:
-	@mkdir -p $(build_dir)
-	@if [ -z "$(wildcard $(build_dir)/*)" ]; then \
-		wget $(RV_TESTCASES) -O $(build_dir)/riscv-syscall-testcases.tar.gz; \
-		tar -xvf $(build_dir)/riscv-syscall-testcases.tar.gz -C $(build_dir); \
+	@mkdir -p $(BUILD_DIR)
+	@if [ -z "$(wildcard $(BUILD_DIR)/*)" ]; then \
+		wget $(TESTCASE_URL) -O $(TARGET_TAR); \
+		tar -xvf $(TARGET_TAR) -C $(BUILD_DIR); \
 	fi
 
 clean:
-	@rm -rf $(build_dir)
+	@rm -rf $(BUILD_DIR)
 
 .PHONY: build clean

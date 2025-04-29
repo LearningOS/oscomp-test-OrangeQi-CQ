@@ -3,11 +3,12 @@ use core::ffi::c_int;
 
 use axerrno::{LinuxError, LinuxResult};
 use axio::PollState;
-use axns::{def_resource, AxResource};
+use axns::{ResArc, def_resource};
 use flatten_objects::FlattenObjects;
 use spin::RwLock;
 
 use crate::ctypes;
+use crate::imp::stdio::{stdin, stdout};
 
 pub const AX_FILE_LIMIT: usize = 1024;
 
@@ -22,22 +23,23 @@ pub trait FileLike: Send + Sync {
 }
 
 def_resource! {
-    #[allow(non_camel_case_types)]
-    pub static FD_TABLE: AxResource<RwLock<FlattenObjects<Arc<dyn FileLike>, AX_FILE_LIMIT>>> = AxResource::new();
+    pub static FD_TABLE: ResArc<RwLock<FlattenObjects<Arc<dyn FileLike>, AX_FILE_LIMIT>>> = ResArc::new();
 }
 
 impl FD_TABLE {
+    /// Return a copy of the inner table.
     pub fn copy_inner(&self) -> RwLock<FlattenObjects<Arc<dyn FileLike>, AX_FILE_LIMIT>> {
         let table = self.read();
         let mut new_table = FlattenObjects::new();
         let count = table.count();
         for i in 0..count {
-            new_table.add_at(i, table.get(i).unwrap().clone());
+            let _ = new_table.add_at(i, table.get(i).unwrap().clone());
         }
         RwLock::new(new_table)
     }
 }
 
+/// Get a file by `fd`.
 pub fn get_file_like(fd: c_int) -> LinuxResult<Arc<dyn FileLike>> {
     FD_TABLE
         .read()
@@ -46,10 +48,12 @@ pub fn get_file_like(fd: c_int) -> LinuxResult<Arc<dyn FileLike>> {
         .ok_or(LinuxError::EBADF)
 }
 
+/// Add a file to the file descriptor table.
 pub fn add_file_like(f: Arc<dyn FileLike>) -> LinuxResult<c_int> {
-    Ok(FD_TABLE.write().add(f).ok_or(LinuxError::EMFILE)? as c_int)
+    Ok(FD_TABLE.write().add(f).map_err(|_| LinuxError::EMFILE)? as c_int)
 }
 
+/// Close a file by `fd`.
 pub fn close_file_like(fd: c_int) -> LinuxResult {
     let f = FD_TABLE
         .write()
@@ -102,7 +106,7 @@ pub fn sys_dup2(old_fd: c_int, new_fd: c_int) -> c_int {
         FD_TABLE
             .write()
             .add_at(new_fd as usize, f)
-            .ok_or(LinuxError::EMFILE)?;
+            .map_err(|_| LinuxError::EMFILE)?;
 
         Ok(new_fd)
     })
@@ -133,4 +137,19 @@ pub fn sys_fcntl(fd: c_int, cmd: c_int, arg: usize) -> c_int {
             }
         }
     })
+}
+
+#[ctor_bare::register_ctor]
+fn init_stdio() {
+    let mut fd_table = flatten_objects::FlattenObjects::new();
+    fd_table
+        .add_at(0, Arc::new(stdin()) as _)
+        .unwrap_or_else(|_| panic!()); // stdin
+    fd_table
+        .add_at(1, Arc::new(stdout()) as _)
+        .unwrap_or_else(|_| panic!()); // stdout
+    fd_table
+        .add_at(2, Arc::new(stdout()) as _)
+        .unwrap_or_else(|_| panic!()); // stderr
+    FD_TABLE.init_new(spin::RwLock::new(fd_table));
 }

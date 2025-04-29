@@ -1,6 +1,8 @@
 # flatten_objects
 
 [![Crates.io](https://img.shields.io/crates/v/flatten_objects)](https://crates.io/crates/flatten_objects)
+[![Docs.rs](https://docs.rs/flatten_objects/badge.svg)](https://docs.rs/flatten_objects)
+[![CI](https://github.com/arceos-org/flatten_objects/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/arceos-org/flatten_objects/actions/workflows/ci.yml)
 
 `FlattenObjects` is a container that stores numbered objects.
 

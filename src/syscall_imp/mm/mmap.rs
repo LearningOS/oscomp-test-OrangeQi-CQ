@@ -1,7 +1,7 @@
 use alloc::vec;
 use axerrno::LinuxError;
 use axhal::paging::MappingFlags;
-use axtask::{current, TaskExtRef};
+use axtask::{TaskExtRef, current};
 use memory_addr::{VirtAddr, VirtAddrRange};
 
 use crate::syscall_body;
@@ -110,10 +110,10 @@ pub(crate) fn sys_mmap(
         };
 
         aspace.map_alloc(
-            start_addr, 
-            aligned_length, 
-            permission_flags.into(), 
-            populate
+            start_addr,
+            aligned_length,
+            permission_flags.into(),
+            populate,
         )?;
 
         if populate {

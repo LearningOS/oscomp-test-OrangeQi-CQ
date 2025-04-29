@@ -6,6 +6,10 @@ use bitflags::bitflags;
 use crate::registers::segmentation::{FS, GS};
 
 /// A model specific register.
+#[cfg_attr(
+    not(all(feature = "instructions", target_arch = "x86_64")),
+    allow(dead_code)
+)] // FIXME
 #[derive(Debug)]
 pub struct Msr(u32);
 
@@ -28,7 +32,7 @@ pub struct FsBase;
 /// [GS].Base Model Specific Register.
 ///
 #[cfg_attr(
-    feature = "instructions",
+    all(feature = "instructions", target_arch = "x86_64"),
     doc = "[`GS::swap`] swaps this register with [`KernelGsBase`]."
 )]
 #[derive(Debug)]
@@ -37,7 +41,7 @@ pub struct GsBase;
 /// KernelGsBase Model Specific Register.
 ///
 #[cfg_attr(
-    feature = "instructions",
+    all(feature = "instructions", target_arch = "x86_64"),
     doc = "[`GS::swap`] swaps this register with [`GsBase`]."
 )]
 #[derive(Debug)]
@@ -157,7 +161,7 @@ bitflags! {
     }
 }
 
-#[cfg(feature = "instructions")]
+#[cfg(all(feature = "instructions", target_arch = "x86_64"))]
 mod x86_64 {
     use super::*;
     use crate::addr::VirtAddr;
@@ -353,11 +357,11 @@ mod x86_64 {
         ///
         /// # Returns
         /// - Field 1 (SYSRET): The CS selector is set to this field + 16. SS.Sel is set to
-        /// this field + 8. Because SYSRET always returns to CPL 3, the
-        /// RPL bits 1:0 should be initialized to 11b.
+        ///   this field + 8. Because SYSRET always returns to CPL 3, the
+        ///   RPL bits 1:0 should be initialized to 11b.
         /// - Field 2 (SYSCALL): This field is copied directly into CS.Sel. SS.Sel is set to
-        ///  this field + 8. Because SYSCALL always switches to CPL 0, the RPL bits
-        /// 33:32 should be initialized to 00b.
+        ///   this field + 8. Because SYSCALL always switches to CPL 0, the RPL bits
+        ///   33:32 should be initialized to 00b.
         #[inline]
         pub fn read_raw() -> (u16, u16) {
             let msr_value = unsafe { Self::MSR.read() };
@@ -394,11 +398,11 @@ mod x86_64 {
         ///
         /// # Parameters
         /// - sysret: The CS selector is set to this field + 16. SS.Sel is set to
-        /// this field + 8. Because SYSRET always returns to CPL 3, the
-        /// RPL bits 1:0 should be initialized to 11b.
+        ///   this field + 8. Because SYSRET always returns to CPL 3, the
+        ///   RPL bits 1:0 should be initialized to 11b.
         /// - syscall: This field is copied directly into CS.Sel. SS.Sel is set to
-        ///  this field + 8. Because SYSCALL always switches to CPL 0, the RPL bits
-        /// 33:32 should be initialized to 00b.
+        ///   this field + 8. Because SYSCALL always switches to CPL 0, the RPL bits
+        ///   33:32 should be initialized to 00b.
         ///
         /// # Safety
         ///

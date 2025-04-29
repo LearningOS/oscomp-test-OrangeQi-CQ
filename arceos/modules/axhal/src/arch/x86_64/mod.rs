@@ -15,8 +15,8 @@ use x86::{controlregs, msr, tlb};
 use x86_64::instructions::interrupts;
 
 pub use self::context::{ExtendedState, FxsaveArea, TaskContext, TrapFrame};
-pub use self::gdt::{init_gdt, tss_get_rsp0, tss_set_rsp0, GdtStruct};
-pub use self::idt::{init_idt, IdtStruct};
+pub use self::gdt::{GdtStruct, init_gdt, tss_get_rsp0, tss_set_rsp0};
+pub use self::idt::{IdtStruct, init_idt};
 
 #[cfg(feature = "uspace")]
 pub use self::{context::UspaceContext, syscall::init_syscall};
@@ -24,6 +24,10 @@ pub use self::{context::UspaceContext, syscall::init_syscall};
 /// Allows the current CPU to respond to interrupts.
 #[inline]
 pub fn enable_irqs() {
+    #[cfg(not(target_os = "none"))]
+    {
+        warn!("enable_irqs: not implemented");
+    }
     #[cfg(target_os = "none")]
     interrupts::enable()
 }
@@ -31,6 +35,10 @@ pub fn enable_irqs() {
 /// Makes the current CPU to ignore interrupts.
 #[inline]
 pub fn disable_irqs() {
+    #[cfg(not(target_os = "none"))]
+    {
+        warn!("disable_irqs: not implemented");
+    }
     #[cfg(target_os = "none")]
     interrupts::disable()
 }
@@ -77,7 +85,7 @@ pub unsafe fn write_page_table_root(root_paddr: PhysAddr) {
     let old_root = read_page_table_root();
     trace!("set page table root: {:#x} => {:#x}", old_root, root_paddr);
     if old_root != root_paddr {
-        controlregs::cr3_write(root_paddr.as_usize() as _)
+        unsafe { controlregs::cr3_write(root_paddr.as_usize() as _) }
     }
 }
 

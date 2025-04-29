@@ -24,6 +24,7 @@ use crate::registers::rflags::RFlags;
 use crate::{PrivilegeLevel, VirtAddr};
 use bit_field::BitField;
 use bitflags::bitflags;
+use core::convert::TryFrom;
 use core::fmt;
 use core::marker::PhantomData;
 use core::ops::Bound::{Excluded, Included, Unbounded};
@@ -153,9 +154,9 @@ pub struct InterruptDescriptorTable {
     ///   is enabled.
     /// - Execution of any legacy SSE instruction when `CR4.OSFXSR` is cleared to 0.
     /// - Execution of any SSE instruction (uses `YMM`/`XMM` registers), or 64-bit media
-    /// instruction (uses `MMXTM` registers) when `CR0.EM` = 1.
+    ///   instruction (uses `MMXTM` registers) when `CR0.EM` = 1.
     /// - Execution of any SSE floating-point instruction (uses `YMM`/`XMM` registers) that
-    /// causes a numeric exception when `CR4.OSXMMEXCPT` = 0.
+    ///   causes a numeric exception when `CR4.OSXMMEXCPT` = 0.
     /// - Use of the `DR4` or `DR5` debug registers when `CR4.DE` = 1.
     /// - Execution of `RSM` when not in `SMM` mode.
     ///
@@ -489,7 +490,7 @@ impl InterruptDescriptorTable {
     }
 
     /// Loads the IDT in the CPU using the `lidt` command.
-    #[cfg(feature = "instructions")]
+    #[cfg(all(feature = "instructions", target_arch = "x86_64"))]
     #[inline]
     pub fn load(&'static self) {
         unsafe { self.load_unsafe() }
@@ -503,9 +504,9 @@ impl InterruptDescriptorTable {
     ///
     /// - `self` is never destroyed.
     /// - `self` always stays at the same memory location. It is recommended to wrap it in
-    /// a `Box`.
+    ///   a `Box`.
     ///
-    #[cfg(feature = "instructions")]
+    #[cfg(all(feature = "instructions", target_arch = "x86_64"))]
     #[inline]
     pub unsafe fn load_unsafe(&self) {
         use crate::instructions::tables::lidt;
@@ -516,7 +517,7 @@ impl InterruptDescriptorTable {
 
     /// Creates the descriptor pointer for this table. This pointer can only be
     /// safely used if the table is never modified or destroyed while in use.
-    #[cfg(feature = "instructions")]
+    #[cfg(all(feature = "instructions", target_arch = "x86_64"))]
     fn pointer(&self) -> crate::structures::DescriptorTablePointer {
         use core::mem::size_of;
         crate::structures::DescriptorTablePointer {
@@ -562,6 +563,13 @@ impl InterruptDescriptorTable {
     pub fn slice_mut(&mut self, bounds: impl RangeBounds<u8>) -> &mut [Entry<HandlerFunc>] {
         let (lower_idx, upper_idx) = self.condition_slice_bounds(bounds);
         &mut self.interrupts[(lower_idx - 32)..(upper_idx - 32)]
+    }
+}
+
+impl Default for InterruptDescriptorTable {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -671,7 +679,7 @@ impl_index_for_idt!(RangeFull);
 
 /// An Interrupt Descriptor Table entry.
 ///
-/// The generic parameter is some [`InterruptFn`], depending on the interrupt vector.
+/// The generic parameter is some [`HandlerFuncType`], depending on the interrupt vector.
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub struct Entry<F> {
@@ -705,52 +713,82 @@ impl<T> PartialEq for Entry<T> {
 /// A handler function for an interrupt or an exception without error code.
 ///
 /// This type alias is only usable with the `abi_x86_interrupt` feature enabled.
-#[cfg(feature = "abi_x86_interrupt")]
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    feature = "abi_x86_interrupt"
+))]
 pub type HandlerFunc = extern "x86-interrupt" fn(InterruptStackFrame);
 /// This type is not usable without the `abi_x86_interrupt` feature.
-#[cfg(not(feature = "abi_x86_interrupt"))]
+#[cfg(not(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    feature = "abi_x86_interrupt"
+)))]
 #[derive(Copy, Clone, Debug)]
 pub struct HandlerFunc(());
 
 /// A handler function for an exception that pushes an error code.
 ///
 /// This type alias is only usable with the `abi_x86_interrupt` feature enabled.
-#[cfg(feature = "abi_x86_interrupt")]
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    feature = "abi_x86_interrupt"
+))]
 pub type HandlerFuncWithErrCode = extern "x86-interrupt" fn(InterruptStackFrame, error_code: u64);
 /// This type is not usable without the `abi_x86_interrupt` feature.
-#[cfg(not(feature = "abi_x86_interrupt"))]
+#[cfg(not(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    feature = "abi_x86_interrupt"
+)))]
 #[derive(Copy, Clone, Debug)]
 pub struct HandlerFuncWithErrCode(());
 
 /// A page fault handler function that pushes a page fault error code.
 ///
 /// This type alias is only usable with the `abi_x86_interrupt` feature enabled.
-#[cfg(feature = "abi_x86_interrupt")]
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    feature = "abi_x86_interrupt"
+))]
 pub type PageFaultHandlerFunc =
     extern "x86-interrupt" fn(InterruptStackFrame, error_code: PageFaultErrorCode);
 /// This type is not usable without the `abi_x86_interrupt` feature.
-#[cfg(not(feature = "abi_x86_interrupt"))]
+#[cfg(not(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    feature = "abi_x86_interrupt"
+)))]
 #[derive(Copy, Clone, Debug)]
 pub struct PageFaultHandlerFunc(());
 
 /// A handler function that must not return, e.g. for a machine check exception.
 ///
 /// This type alias is only usable with the `abi_x86_interrupt` feature enabled.
-#[cfg(feature = "abi_x86_interrupt")]
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    feature = "abi_x86_interrupt"
+))]
 pub type DivergingHandlerFunc = extern "x86-interrupt" fn(InterruptStackFrame) -> !;
 /// This type is not usable without the `abi_x86_interrupt` feature.
-#[cfg(not(feature = "abi_x86_interrupt"))]
+#[cfg(not(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    feature = "abi_x86_interrupt"
+)))]
 #[derive(Copy, Clone, Debug)]
 pub struct DivergingHandlerFunc(());
 
 /// A handler function with an error code that must not return, e.g. for a double fault exception.
 ///
 /// This type alias is only usable with the `abi_x86_interrupt` feature enabled.
-#[cfg(feature = "abi_x86_interrupt")]
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    feature = "abi_x86_interrupt"
+))]
 pub type DivergingHandlerFuncWithErrCode =
     extern "x86-interrupt" fn(InterruptStackFrame, error_code: u64) -> !;
 /// This type is not usable without the `abi_x86_interrupt` feature.
-#[cfg(not(feature = "abi_x86_interrupt"))]
+#[cfg(not(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    feature = "abi_x86_interrupt"
+)))]
 #[derive(Copy, Clone, Debug)]
 pub struct DivergingHandlerFuncWithErrCode(());
 
@@ -785,7 +823,7 @@ impl<F> Entry<F> {
     ///
     /// The caller must ensure that `addr` is the address of a valid interrupt handler function,
     /// and the signature of such a function is correct for the entry type.
-    #[cfg(feature = "instructions")]
+    #[cfg(all(feature = "instructions", target_arch = "x86_64"))]
     #[inline]
     pub unsafe fn set_handler_addr(&mut self, addr: VirtAddr) -> &mut EntryOptions {
         use crate::instructions::segmentation::{Segment, CS};
@@ -814,7 +852,7 @@ impl<F> Entry<F> {
     }
 }
 
-#[cfg(feature = "instructions")]
+#[cfg(all(feature = "instructions", target_arch = "x86_64"))]
 impl<F: HandlerFuncType> Entry<F> {
     /// Sets the handler function for the IDT entry and sets the following defaults:
     ///   - The code selector is the code segment currently active in the CPU
@@ -846,10 +884,19 @@ pub unsafe trait HandlerFuncType {
 
 macro_rules! impl_handler_func_type {
     ($f:ty) => {
-        #[cfg(feature = "abi_x86_interrupt")]
+        #[cfg(all(
+            any(target_arch = "x86", target_arch = "x86_64"),
+            feature = "abi_x86_interrupt"
+        ))]
         unsafe impl HandlerFuncType for $f {
             #[inline]
             fn to_virt_addr(self) -> VirtAddr {
+                // Casting a function pointer to u64 is fine, if the pointer
+                // width doesn't exeed 64 bits.
+                #[cfg_attr(
+                    any(target_pointer_width = "32", target_pointer_width = "64"),
+                    allow(clippy::fn_to_numeric_cast)
+                )]
                 VirtAddr::new(self as u64)
             }
         }
@@ -1080,7 +1127,7 @@ impl InterruptStackFrameValue {
     /// CS and SS register can all cause undefined behaviour when done incorrectly.
     ///
     #[inline(always)]
-    #[cfg(feature = "instructions")]
+    #[cfg(all(feature = "instructions", target_arch = "x86_64"))]
     pub unsafe fn iretq(&self) -> ! {
         unsafe {
             core::arch::asm!(
@@ -1315,7 +1362,57 @@ pub enum ExceptionVector {
     Security = 0x1E,
 }
 
-#[cfg(all(feature = "instructions", feature = "abi_x86_interrupt"))]
+/// Exception vector number is invalid
+#[derive(Debug)]
+pub struct InvalidExceptionVectorNumber(u8);
+
+impl fmt::Display for InvalidExceptionVectorNumber {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} is not a valid exception vector", self.0)
+    }
+}
+
+impl TryFrom<u8> for ExceptionVector {
+    type Error = InvalidExceptionVectorNumber;
+
+    /// Tries to convert the exception vector number to [`ExceptionVector`]
+    ///
+    /// Fails if exception vector number is Coprocessor Segment Overrun, reserved or not exception vector number
+    fn try_from(exception_vector_number: u8) -> Result<Self, Self::Error> {
+        match exception_vector_number {
+            0x00 => Ok(Self::Division),
+            0x01 => Ok(Self::Debug),
+            0x02 => Ok(Self::NonMaskableInterrupt),
+            0x03 => Ok(Self::Breakpoint),
+            0x04 => Ok(Self::Overflow),
+            0x05 => Ok(Self::BoundRange),
+            0x06 => Ok(Self::InvalidOpcode),
+            0x07 => Ok(Self::DeviceNotAvailable),
+            0x08 => Ok(Self::Double),
+            0x0A => Ok(Self::InvalidTss),
+            0x0B => Ok(Self::SegmentNotPresent),
+            0x0C => Ok(Self::Stack),
+            0x0D => Ok(Self::GeneralProtection),
+            0x0E => Ok(Self::Page),
+            0x10 => Ok(Self::X87FloatingPoint),
+            0x11 => Ok(Self::AlignmentCheck),
+            0x12 => Ok(Self::MachineCheck),
+            0x13 => Ok(Self::SimdFloatingPoint),
+            0x14 => Ok(Self::Virtualization),
+            0x15 => Ok(Self::ControlProtection),
+            0x1C => Ok(Self::HypervisorInjection),
+            0x1D => Ok(Self::VmmCommunication),
+            0x1E => Ok(Self::Security),
+            _ => Err(InvalidExceptionVectorNumber(exception_vector_number)),
+        }
+    }
+}
+
+#[cfg(all(
+    feature = "instructions",
+    feature = "abi_x86_interrupt",
+    target_arch = "x86_64"
+))]
 #[macro_export]
 /// Set a general handler in an [`InterruptDescriptorTable`].
 /// ```
@@ -1377,7 +1474,11 @@ macro_rules! set_general_handler {
     }};
 }
 
-#[cfg(all(feature = "instructions", feature = "abi_x86_interrupt"))]
+#[cfg(all(
+    feature = "instructions",
+    feature = "abi_x86_interrupt",
+    target_arch = "x86_64"
+))]
 #[macro_export]
 #[doc(hidden)]
 /// We can't loop in macros, but we can use recursion.
@@ -1399,7 +1500,11 @@ macro_rules! set_general_handler_recursive_bits {
     };
 }
 
-#[cfg(all(feature = "instructions", feature = "abi_x86_interrupt"))]
+#[cfg(all(
+    feature = "instructions",
+    feature = "abi_x86_interrupt",
+    target_arch = "x86_64"
+))]
 #[macro_export]
 #[doc(hidden)]
 macro_rules! set_general_handler_entry {
@@ -1562,7 +1667,11 @@ mod test {
         assert_eq!(size_of::<InterruptStackFrameValue>(), 40);
     }
 
-    #[cfg(all(feature = "instructions", feature = "abi_x86_interrupt"))]
+    #[cfg(all(
+        feature = "instructions",
+        feature = "abi_x86_interrupt",
+        target_arch = "x86_64"
+    ))]
     // there seems to be a bug in LLVM that causes rustc to crash on windows when compiling this test:
     // https://github.com/rust-osdev/x86_64/pull/285#issuecomment-962642984
     #[cfg(not(windows))]
@@ -1613,7 +1722,7 @@ mod test {
 
     #[test]
     fn entry_derive_test() {
-        fn foo(_: impl Clone + Copy + PartialEq + fmt::Debug) {}
+        fn foo(_: impl Copy + PartialEq + fmt::Debug) {}
 
         foo(Entry::<HandlerFuncWithErrCode> {
             pointer_low: 0,
@@ -1638,9 +1747,7 @@ mod test {
         });
 
         unsafe {
-            frame
-                .as_mut()
-                .update(|f| f.instruction_pointer = f.instruction_pointer + 2u64);
+            frame.as_mut().update(|f| f.instruction_pointer += 2u64);
         }
     }
 }

@@ -1,16 +1,16 @@
 use core::fmt;
 
 use alloc::vec;
-use axerrno::{ax_err, AxError, AxResult};
+use axerrno::{AxError, AxResult, ax_err};
 use axhal::mem::phys_to_virt;
 use axhal::paging::{MappingFlags, PageTable};
 use memory_addr::{
-    is_aligned_4k, MemoryAddr, PageIter4K, PhysAddr, VirtAddr, VirtAddrRange, PAGE_SIZE_4K,
+    MemoryAddr, PAGE_SIZE_4K, PageIter4K, PhysAddr, VirtAddr, VirtAddrRange, is_aligned_4k,
 };
 use memory_set::{MemoryArea, MemorySet};
 
 use crate::backend::Backend;
-use crate::{mapping_err_to_ax_err, KERNEL_ASPACE};
+use crate::{KERNEL_ASPACE, mapping_err_to_ax_err};
 
 /// The virtual memory address space.
 pub struct AddrSpace {
@@ -137,7 +137,6 @@ impl AddrSpace {
         if !self.contains_range(start, size) {
             return ax_err!(InvalidInput, "address out of range");
         }
-        info!("start: {:?}, size: {:?}", start, size);
         if !start.is_aligned_4k() || !is_aligned_4k(size) {
             return ax_err!(InvalidInput, "address not aligned");
         }
@@ -149,11 +148,8 @@ impl AddrSpace {
         Ok(())
     }
 
-    pub fn alloc_for_lazy(
-        &mut self,
-        start: VirtAddr,
-        size: usize,
-    ) -> AxResult {
+    /// Add a new zero-initialized allocation mapping.
+    pub fn alloc_for_lazy(&mut self, start: VirtAddr, size: usize) -> AxResult {
         let end = (start + size).align_up_4k();
         let mut start = start.align_down_4k();
         let size = end - start;
@@ -162,17 +158,19 @@ impl AddrSpace {
         }
         while let Some(area) = self.areas.find(start) {
             let area_backend = area.backend();
-            match area_backend{
-                Backend::Alloc { populate } => {
-                    if !*populate {
-                        let count = (area.end().min(end) - start).align_up_4k() / PAGE_SIZE_4K;
-                        for i in 0..count {
-                            let addr = start + i * PAGE_SIZE_4K;
-                            area_backend.handle_page_fault_alloc(addr, area.flags(), &mut self.pt, *populate);
-                        }
+            if let Backend::Alloc { populate } = area_backend {
+                if !*populate {
+                    let count = (area.end().min(end) - start).align_up_4k() / PAGE_SIZE_4K;
+                    for i in 0..count {
+                        let addr = start + i * PAGE_SIZE_4K;
+                        area_backend.handle_page_fault_alloc(
+                            addr,
+                            area.flags(),
+                            &mut self.pt,
+                            *populate,
+                        );
                     }
                 }
-                _ => (),
             }
             start = area.end();
             assert!(start.is_aligned_4k());
@@ -207,7 +205,11 @@ impl AddrSpace {
             assert!(area.start().is_aligned_4k());
             assert!(area.size() % PAGE_SIZE_4K == 0);
             assert!(area.flags().contains(MappingFlags::USER));
-            assert!(self.va_range.contains_range(VirtAddrRange::from_start_size(area.start(), area.size())), "MemorySet contains out-of-va-range area");
+            assert!(
+                self.va_range
+                    .contains_range(VirtAddrRange::from_start_size(area.start(), area.size())),
+                "MemorySet contains out-of-va-range area"
+            );
         }
         self.areas.clear(&mut self.pt).unwrap();
         Ok(())
@@ -221,10 +223,10 @@ impl AddrSpace {
     /// - `start`: The start virtual address to process.
     /// - `size`: The size of the data to process.
     /// - `f`: The function to process the data, whose arguments are the start virtual address,
-    /// the offset and the size of the data.
+    ///   the offset and the size of the data.
     ///
     /// # Notes
-    /// The caller must ensure that the permission of the operation is allowed.
+    ///   The caller must ensure that the permission of the operation is allowed.
     fn process_area_data<F>(&self, start: VirtAddr, size: usize, f: F) -> AxResult
     where
         F: FnMut(VirtAddr, usize, usize),
@@ -246,6 +248,7 @@ impl AddrSpace {
             return ax_err!(InvalidInput, "address out of range");
         }
         let mut cnt = 0;
+        // If start is aligned to 4K, start_align_down will be equal to start_align_up.
         let end_align_up = (start + size).align_up_4k();
         for vaddr in PageIter4K::new(start.align_down_4k(), end_align_up)
             .expect("Failed to create page iterator")
@@ -345,12 +348,16 @@ impl AddrSpace {
         // 由于要克隆的这个地址空间可能是用户空间，而用户空间在一开始创建时不会在MemorySet中管理内核区域，而是直接把相关的页表项复制到了新页表中，所以在MemorySet中没有内核区域，需要另外处理。
         let mut new_pt = PageTable::try_new().map_err(|_| AxError::NoMemory)?;
         // 如果不是 ARMv8 架构，将内核部分复制到用户页表中。
-        if !cfg!(target_arch = "aarch64") {
+        if !cfg!(target_arch = "aarch64") && !cfg!(target_arch = "loongarch64") {
             // ARMv8 使用一个单独的页表 (TTBR0_EL1) 用于用户空间，不需要将内核部分复制到用户页表中。
             let kernel_aspace = KERNEL_ASPACE.lock();
-            new_pt.copy_from(&kernel_aspace.pt, kernel_aspace.base(), kernel_aspace.size());
+            new_pt.copy_from(
+                &kernel_aspace.pt,
+                kernel_aspace.base(),
+                kernel_aspace.size(),
+            );
         }
-        
+
         // 创建一个新的 MemorySet 并将原始区域映射到新的页表中。
         let mut new_areas = MemorySet::new();
         let mut buf = vec![0u8; PAGE_SIZE_4K];
@@ -361,12 +368,13 @@ impl AddrSpace {
                 area.flags(),
                 area.backend().clone(),
             );
-            new_areas.map(new_area, &mut new_pt, false).map_err(mapping_err_to_ax_err)?;
+            new_areas
+                .map(new_area, &mut new_pt, false)
+                .map_err(mapping_err_to_ax_err)?;
             // 将原区域的数据复制到新区域中。
             buf.resize(buf.capacity().max(area.size()), 0);
-            self.read(area.start(), &mut buf).map_err(|e| {
+            self.read(area.start(), &mut buf).inspect_err(|_| {
                 new_areas.clear(&mut new_pt).unwrap();
-                e
             })?;
             Self::process_area_data_with_page_table(
                 &new_pt,

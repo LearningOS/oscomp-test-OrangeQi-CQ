@@ -95,6 +95,7 @@ mod pmpaddrx;
 pub use self::pmpaddrx::*;
 
 // Machine Counter/Timers
+pub mod mcountinhibit;
 pub mod mcycle;
 pub mod mcycleh;
 mod mhpmcounterx;
@@ -105,6 +106,9 @@ pub mod minstreth;
 // Machine Counter Setup
 mod mhpmeventx;
 pub use self::mhpmeventx::*;
+
+#[cfg(test)]
+mod tests;
 
 // TODO: Debug/Trace Registers (shared with Debug Mode)
 

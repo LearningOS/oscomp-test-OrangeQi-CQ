@@ -12,8 +12,13 @@
 [package]
 edition = "2021"
 name = "bitmap-allocator"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["WangRunji <wangrunji0408@163.com>"]
+build = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "Bit allocator based on segment tree algorithm."
 readme = "README.md"
 keywords = [
@@ -27,6 +32,10 @@ categories = [
 ]
 license = "MIT"
 repository = "https://github.com/rcore-os/bitmap-allocator"
+
+[lib]
+name = "bitmap_allocator"
+path = "src/lib.rs"
 
 [dependencies.bit_field]
 version = "0.10"

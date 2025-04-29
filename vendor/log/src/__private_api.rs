@@ -3,8 +3,7 @@
 use self::sealed::KVs;
 use crate::{Level, Metadata, Record};
 use std::fmt::Arguments;
-use std::panic::Location;
-pub use std::{format_args, module_path, stringify};
+pub use std::{file, format_args, line, module_path, stringify};
 
 #[cfg(not(feature = "kv"))]
 pub type Value<'a> = &'a str;
@@ -37,7 +36,8 @@ impl<'a> KVs<'a> for () {
 fn log_impl(
     args: Arguments,
     level: Level,
-    &(target, module_path, loc): &(&str, &'static str, &'static Location),
+    &(target, module_path, file): &(&str, &'static str, &'static str),
+    line: u32,
     kvs: Option<&[(&str, Value)]>,
 ) {
     #[cfg(not(feature = "kv"))]
@@ -52,8 +52,8 @@ fn log_impl(
         .level(level)
         .target(target)
         .module_path_static(Some(module_path))
-        .file_static(Some(loc.file()))
-        .line(Some(loc.line()));
+        .file_static(Some(file))
+        .line(Some(line));
 
     #[cfg(feature = "kv")]
     builder.key_values(&kvs);
@@ -64,21 +64,23 @@ fn log_impl(
 pub fn log<'a, K>(
     args: Arguments,
     level: Level,
-    target_module_path_and_loc: &(&str, &'static str, &'static Location),
+    target_module_path_and_file: &(&str, &'static str, &'static str),
+    line: u32,
     kvs: K,
 ) where
     K: KVs<'a>,
 {
-    log_impl(args, level, target_module_path_and_loc, kvs.into_kvs())
+    log_impl(
+        args,
+        level,
+        target_module_path_and_file,
+        line,
+        kvs.into_kvs(),
+    )
 }
 
 pub fn enabled(level: Level, target: &str) -> bool {
     crate::logger().enabled(&Metadata::builder().level(level).target(target).build())
-}
-
-#[track_caller]
-pub fn loc() -> &'static Location<'static> {
-    Location::caller()
 }
 
 #[cfg(feature = "kv")]

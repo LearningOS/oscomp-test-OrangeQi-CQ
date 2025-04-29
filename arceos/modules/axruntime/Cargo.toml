@@ -1,7 +1,7 @@
 [package]
 name = "axruntime"
 version.workspace = true
-edition = "2021"
+edition.workspace = true
 authors = ["Yuekai Jia <equation618@gmail.com>"]
 description = "Runtime library of ArceOS"
 license.workspace = true
@@ -12,7 +12,7 @@ documentation = "https://arceos-org.github.io/arceos/axruntime/index.html"
 [features]
 default = []
 
-smp = ["axhal/smp"]
+smp = ["axhal/smp", "axtask?/smp"]
 irq = ["axhal/irq", "axtask?/irq", "percpu", "kernel_guard"]
 tls = ["axhal/tls", "axtask?/tls"]
 alloc = ["axalloc"]
@@ -37,8 +37,8 @@ axdisplay = { workspace = true, optional = true }
 axtask = { workspace = true, optional = true }
 
 crate_interface = "0.1"
-percpu = { version = "0.1", optional = true }
+percpu = { version = "0.2", optional = true }
 kernel_guard = { version = "0.1", optional = true }
-ctor_bare = "0.1"
+ctor_bare = "0.2"
 
 chrono = { version = "0.4.38", default-features = false }

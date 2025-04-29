@@ -106,8 +106,8 @@ pub mod mem {
 pub mod stdio {
     use core::fmt;
     define_api! {
-        /// Reads a byte from the console, or returns [`None`] if no input is available.
-        pub fn ax_console_read_byte() -> Option<u8>;
+        /// Reads a slice of bytes from the console, returns the number of bytes written.
+        pub fn ax_console_read_bytes(buf: &mut [u8]) -> crate::AxResult<usize>;
         /// Writes a slice of bytes to the console, returns the number of bytes written.
         pub fn ax_console_write_bytes(buf: &[u8]) -> crate::AxResult<usize>;
         /// Writes a formatted string to the console.
@@ -121,6 +121,7 @@ pub mod task {
         @cfg "multitask";
         pub type AxTaskHandle;
         pub type AxWaitQueueHandle;
+        pub type AxCpuMask;
     }
 
     define_api! {
@@ -155,11 +156,16 @@ pub mod task {
         pub fn ax_wait_for_exit(task: AxTaskHandle) -> Option<i32>;
         /// Sets the priority of the current task.
         pub fn ax_set_current_priority(prio: isize) -> crate::AxResult;
-
+        /// Sets the cpu affinity of the current task.
+        pub fn ax_set_current_affinity(cpumask: AxCpuMask) -> crate::AxResult;
+        /// Blocks the current task and put it into the wait queue, until
+        /// other tasks notify the wait queue, or the the given duration has
+        /// elapsed (if specified).
+        pub fn ax_wait_queue_wait(wq: &AxWaitQueueHandle, timeout: Option<core::time::Duration>) -> bool;
         /// Blocks the current task and put it into the wait queue, until the
         /// given condition becomes true, or the the given duration has elapsed
         /// (if specified).
-        pub fn ax_wait_queue_wait(
+        pub fn ax_wait_queue_wait_until(
             wq: &AxWaitQueueHandle,
             until_condition: impl Fn() -> bool,
             timeout: Option<core::time::Duration>,
@@ -259,7 +265,7 @@ pub mod fs {
 
 /// Networking primitives for TCP/UDP communication.
 pub mod net {
-    use crate::{io::AxPollState, AxResult};
+    use crate::{AxResult, io::AxPollState};
     use core::net::{IpAddr, SocketAddr};
 
     define_api_type! {

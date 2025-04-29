@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.60.0"
 name = "log"
-version = "0.4.22"
+version = "0.4.21"
 authors = ["The Rust Project Developers"]
 exclude = ["rfcs/**/*"]
 description = """
@@ -36,8 +36,8 @@ features = [
 ]
 
 [[test]]
-name = "integration"
-path = "tests/integration.rs"
+name = "filters"
+path = "tests/filters.rs"
 harness = false
 
 [[test]]

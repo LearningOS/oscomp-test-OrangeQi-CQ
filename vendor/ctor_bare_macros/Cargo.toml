@@ -10,9 +10,9 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
-edition = "2021"
+edition = "2024"
 name = "ctor_bare_macros"
-version = "0.1.1"
+version = "0.2.1"
 authors = ["Youjie Zheng <Azure_stars@126.com>"]
 build = false
 autolib = false
@@ -35,6 +35,7 @@ categories = [
 ]
 license = "GPL-3.0-or-later OR Apache-2.0 OR MulanPSL-2.0"
 repository = "https://github.com/arceos-org/ctor_bare"
+resolver = "2"
 
 [lib]
 name = "ctor_bare_macros"

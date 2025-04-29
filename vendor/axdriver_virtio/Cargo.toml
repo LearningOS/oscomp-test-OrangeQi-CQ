@@ -14,9 +14,16 @@ edition = "2021"
 name = "axdriver_virtio"
 version = "0.1.0"
 authors = ["Yuekai Jia <equation618@gmail.com>"]
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "Wrappers of some devices in the `virtio-drivers` crate, that implement traits in the `axdriver_base` series crates"
 homepage = "https://github.com/arceos-org/arceos"
 documentation = "https://arceos-org.github.io/axdriver_crates/axdriver_virtio"
+readme = false
 keywords = [
     "arceos",
     "dirver",
@@ -29,6 +36,15 @@ categories = [
 ]
 license = "GPL-3.0-or-later OR Apache-2.0 OR MulanPSL-2.0"
 repository = "https://github.com/arceos-org/axdriver_crates"
+
+[features]
+block = ["axdriver_block"]
+gpu = ["axdriver_display"]
+net = ["axdriver_net"]
+
+[lib]
+name = "axdriver_virtio"
+path = "src/lib.rs"
 
 [dependencies]
 virtio-drivers = "0.7.4"
@@ -51,8 +67,3 @@ optional = true
 version = "0.1"
 path = "../axdriver_net"
 optional = true
-
-[features]
-block = ["axdriver_block"]
-gpu = ["axdriver_display"]
-net = ["axdriver_net"]

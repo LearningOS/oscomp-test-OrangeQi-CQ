@@ -3522,6 +3522,14 @@ impl ExtendedFeatures {
         self.ecx.contains(ExtendedFeaturesEcx::PREFETCHWT1)
     }
 
+    /// AVX512VBMI
+    ///
+    /// ✅ AMD ✅ Intel
+    #[inline]
+    pub const fn has_avx512vbmi(&self) -> bool {
+        self.ecx.contains(ExtendedFeaturesEcx::AVX512VBMI)
+    }
+
     /// Supports user-mode instruction prevention if 1.
     ///
     /// # Platforms
@@ -3561,8 +3569,17 @@ impl ExtendedFeatures {
     /// AVX512VBMI2
     ///
     /// ✅ AMD ✅ Intel
+    #[deprecated(since = "11.4.0", note = "Please use `has_avx512vbmi2` instead")]
     #[inline]
     pub const fn has_av512vbmi2(&self) -> bool {
+        self.ecx.contains(ExtendedFeaturesEcx::AVX512VBMI2)
+    }
+
+    /// AVX512VBMI2
+    ///
+    /// ✅ AMD ✅ Intel
+    #[inline]
+    pub const fn has_avx512vbmi2(&self) -> bool {
         self.ecx.contains(ExtendedFeaturesEcx::AVX512VBMI2)
     }
 
@@ -3573,7 +3590,7 @@ impl ExtendedFeatures {
     /// ❓ AMD ✅ Intel
     #[inline]
     pub const fn has_cet_ss(&self) -> bool {
-        self.ecx.contains(ExtendedFeaturesEcx::GFNI)
+        self.ecx.contains(ExtendedFeaturesEcx::CETSS)
     }
 
     /// GFNI

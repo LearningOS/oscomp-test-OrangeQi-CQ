@@ -5,6 +5,7 @@ const BUILTIN_PLATFORMS: &[&str] = &[
     "aarch64-bsta1000b",
     "aarch64-qemu-virt",
     "aarch64-raspi4",
+    "loongarch64-qemu-virt",
     "riscv64-qemu-virt",
     "x86_64-pc-oslab",
     "x86_64-qemu-q35",
@@ -12,8 +13,10 @@ const BUILTIN_PLATFORMS: &[&str] = &[
 
 const BUILTIN_PLATFORM_FAMILIES: &[&str] = &[
     "aarch64-bsta1000b",
+    "aarch64-phytium-pi",
     "aarch64-qemu-virt",
     "aarch64-raspi",
+    "loongarch64-qemu-virt",
     "riscv64-qemu-virt",
     "x86-pc",
 ];
@@ -34,7 +37,10 @@ fn main() {
     }
 
     println!("cargo:rustc-cfg=platform=\"{}\"", platform);
-    println!("cargo:rustc-cfg=platform_family=\"{}\"", axconfig::FAMILY);
+    println!(
+        "cargo:rustc-cfg=platform_family=\"{}\"",
+        axconfig::plat::FAMILY
+    );
     println!(
         "cargo::rustc-check-cfg=cfg(platform, values({}))",
         make_cfg_values(BUILTIN_PLATFORMS)
@@ -58,7 +64,7 @@ fn gen_linker_script(arch: &str, platform: &str) -> Result<()> {
     let ld_content = ld_content.replace("%ARCH%", output_arch);
     let ld_content = ld_content.replace(
         "%KERNEL_BASE%",
-        &format!("{:#x}", axconfig::KERNEL_BASE_VADDR),
+        &format!("{:#x}", axconfig::plat::KERNEL_BASE_VADDR),
     );
     let ld_content = ld_content.replace("%SMP%", &format!("{}", axconfig::SMP));
 

@@ -26,7 +26,7 @@ use core::{alloc::Layout, fmt, ops::Deref};
 
 use lazyinit::LazyInit;
 
-extern "C" {
+unsafe extern "C" {
     fn __start_axns_resource();
     fn __stop_axns_resource();
 }
@@ -36,14 +36,14 @@ extern "C" {
 /// There are two types of namespaces:
 ///
 /// - Global namespace: this namespace is globally unique and all threads share
-/// the resources in it. Resources are statically collected into the
-/// `axns_resource` section, and the global namespace is constructed by the base
-/// address of the section ([`AxNamespace::global`]).
+///   the resources in it. Resources are statically collected into the
+///   `axns_resource` section, and the global namespace is constructed by the base
+///   address of the section ([`AxNamespace::global`]).
 /// - Thread-local namespace: this namespace is per-thread, each thread should
-/// call [`AxNamespace::new_thread_local()`] to allocate a memory area as its
-/// namespace. Layout of resources in global and thread-local namespaces is
-/// consistent. Each namespace has its own resources, which may be unique or
-/// shared between threads by the [`Arc`] wrapper.
+///   call [`AxNamespace::new_thread_local()`] to allocate a memory area as its
+///   namespace. Layout of resources in global and thread-local namespaces is
+///   consistent. Each namespace has its own resources, which may be unique or
+///   shared between threads by the [`Arc`] wrapper.
 pub struct AxNamespace {
     base: *mut u8,
     alloc: bool,
@@ -67,31 +67,11 @@ impl AxNamespace {
     }
 
     /// Returns the global namespace.
-    #[cfg(not(feature = "thread-local"))]
     pub fn global() -> Self {
         Self {
             base: __start_axns_resource as *mut u8,
             alloc: false,
         }
-    }
-
-    pub fn global() -> Self {
-        use core::ptr::null_mut;
-        
-        static mut GLOBAL_BASE: *mut u8 = null_mut();
-        unsafe {
-            if GLOBAL_BASE.is_null() {
-                let mut ns = Self::new_thread_local();
-                GLOBAL_BASE = ns.base;
-                
-                ns.base = null_mut();
-            }
-            AxNamespace {
-                base: GLOBAL_BASE,
-                alloc: false,
-            }
-        }
-        
     }
 
     /// Constructs a new thread-local namespace.
@@ -133,9 +113,9 @@ impl Drop for AxNamespace {
 ///
 /// It provides methods to lazily initialize the resource of the current thread,
 /// or to share the resource with other threads.
-pub struct AxResource<T>(LazyInit<Arc<T>>);
+pub struct ResArc<T>(LazyInit<Arc<T>>);
 
-impl<T> AxResource<T> {
+impl<T> ResArc<T> {
     /// Creates a new uninitialized resource.
     pub const fn new() -> Self {
         Self(LazyInit::new())
@@ -162,7 +142,7 @@ impl<T> AxResource<T> {
     }
 }
 
-impl<T> Deref for AxResource<T> {
+impl<T> Deref for ResArc<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -170,7 +150,7 @@ impl<T> Deref for AxResource<T> {
     }
 }
 
-impl<T: fmt::Debug> fmt::Debug for AxResource<T> {
+impl<T: fmt::Debug> fmt::Debug for ResArc<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.0.fmt(f)
     }
@@ -215,11 +195,11 @@ pub unsafe fn current_namespace_base() -> *mut u8 {
 /// # Example
 ///
 /// ```
-/// use axns::AxResource;
+/// use axns::ResArc;
 ///
 /// axns::def_resource! {
 ///     static FOO: u32 = 42;
-///     static BAR: AxResource<String> = AxResource::new();
+///     static BAR: ResArc<String> = ResArc::new();
 /// }
 ///
 /// BAR.init_new("hello world".to_string());
@@ -229,10 +209,10 @@ pub unsafe fn current_namespace_base() -> *mut u8 {
 /// mod imp {
 ///     use axns::{AxNamespace, AxNamespaceIf};
 ///
-///     struct AxResourceImpl;
+///     struct ResArcImpl;
 ///
 ///     #[crate_interface::impl_interface]
-///     impl AxNamespaceIf for AxResourceImpl {
+///     impl AxNamespaceIf for ResArcImpl {
 ///         fn current_namespace_base() -> *mut u8 {
 ///             AxNamespace::global().base()
 ///         }
@@ -243,21 +223,22 @@ pub unsafe fn current_namespace_base() -> *mut u8 {
 macro_rules! def_resource {
     ( $( $(#[$attr:meta])* $vis:vis static $name:ident: $ty:ty = $default:expr; )+ ) => {
         $(
-            $(#[$attr])*
+            #[doc = concat!("Wrapper struct for the namespace resource [`", stringify!($name), "`]")]
+            #[allow(non_camel_case_types)]
             $vis struct $name { __value: () }
 
             impl $name {
                 unsafe fn deref_from_base(&self, ns_base: *mut u8) -> &$ty {
-                    extern {
+                    unsafe extern {
                         fn __start_axns_resource();
                     }
 
-                    #[link_section = "axns_resource"]
+                    #[unsafe(link_section = "axns_resource")]
                     static RES: $ty = $default;
 
                     let offset = &RES as *const _ as usize - __start_axns_resource as usize;
-                    let ptr = ns_base.add(offset) as *const _;
-                    &*ptr
+                    let ptr = unsafe{ ns_base.add(offset) } as *const _;
+                    unsafe{ &*ptr }
                 }
 
                 /// Dereference the resource from the given namespace.

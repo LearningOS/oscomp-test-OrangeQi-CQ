@@ -19,8 +19,14 @@ cfg_display! {
 mod stdio {
     use core::fmt;
 
-    pub fn ax_console_read_byte() -> Option<u8> {
-        axhal::console::getchar().map(|c| if c == b'\r' { b'\n' } else { c })
+    pub fn ax_console_read_bytes(buf: &mut [u8]) -> crate::AxResult<usize> {
+        let len = axhal::console::read_bytes(buf);
+        for c in &mut buf[..len] {
+            if *c == b'\r' {
+                *c = b'\n';
+            }
+        }
+        Ok(len)
     }
 
     pub fn ax_console_write_bytes(buf: &[u8]) -> crate::AxResult<usize> {
@@ -35,7 +41,7 @@ mod stdio {
 
 mod time {
     pub use axhal::time::{
-        monotonic_time as ax_monotonic_time, wall_time as ax_wall_time, TimeValue as AxTimeValue,
+        TimeValue as AxTimeValue, monotonic_time as ax_monotonic_time, wall_time as ax_wall_time,
     };
 }
 
