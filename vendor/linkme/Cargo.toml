@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.62"
 name = "linkme"
-version = "0.3.31"
+version = "0.3.32"
 authors = ["David Tolnay <dtolnay@gmail.com>"]
 build = false
 autolib = false
@@ -35,13 +35,20 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/dtolnay/linkme"
 
 [package.metadata.docs.rs]
-rustdoc-args = ["--generate-link-to-definition"]
+rustdoc-args = [
+    "--generate-link-to-definition",
+    "--extern-html-root-url=core=https://doc.rust-lang.org",
+    "--extern-html-root-url=alloc=https://doc.rust-lang.org",
+    "--extern-html-root-url=std=https://doc.rust-lang.org",
+]
 targets = ["x86_64-unknown-linux-gnu"]
+
+[features]
+used_linker = ["linkme-impl/used_linker"]
 
 [lib]
 name = "linkme"
 path = "src/lib.rs"
-doc-scrape-examples = false
 
 [[test]]
 name = "compiletest"
@@ -81,7 +88,7 @@ name = "win_status_illegal_instruction"
 path = "tests/win_status_illegal_instruction.rs"
 
 [dependencies.linkme-impl]
-version = "=0.3.31"
+version = "=0.3.32"
 
 [dev-dependencies.once_cell]
 version = "1.16"
@@ -92,6 +99,3 @@ version = "1.0"
 [dev-dependencies.trybuild]
 version = "1.0.97"
 features = ["diff"]
-
-[features]
-used_linker = ["linkme-impl/used_linker"]

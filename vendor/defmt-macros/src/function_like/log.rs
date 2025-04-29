@@ -3,7 +3,7 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro_error2::abort;
 use quote::quote;
-use syn::parse_macro_input;
+use syn::{parse_macro_input, parse_quote};
 
 use crate::construct;
 
@@ -36,8 +36,13 @@ pub(crate) fn expand_parsed(level: Level, args: Args) -> TokenStream2 {
         args.format_string.span(),
     );
 
-    let header =
-        construct::interned_string(&format_string, level.as_str(), true, Some(level.as_str()));
+    let header = construct::interned_string(
+        &format_string,
+        level.as_str(),
+        true,
+        Some(level.as_str()),
+        &parse_quote!(defmt),
+    );
     let env_filter = EnvFilter::from_env_var();
 
     if let Some(filter_check) = env_filter.path_check(level) {
@@ -56,10 +61,13 @@ pub(crate) fn expand_parsed(level: Level, args: Args) -> TokenStream2 {
         };
 
         quote!(
-            match (#(&(#formatting_exprs)),*) {
-                (#(#patterns),*) => {
-                    if #filter_check {
-                        #content
+            {
+                option_env!("DEFMT_LOG");
+                match (#(&(#formatting_exprs)),*) {
+                    (#(#patterns),*) => {
+                        if #filter_check {
+                            #content
+                        }
                     }
                 }
             }
@@ -67,8 +75,11 @@ pub(crate) fn expand_parsed(level: Level, args: Args) -> TokenStream2 {
     } else {
         // if logging is disabled match args, so they are not considered "unused"
         quote!(
-            match (#(&(#formatting_exprs)),*) {
-                _ => {}
+            {
+                option_env!("DEFMT_LOG");
+                match (#(&(#formatting_exprs)),*) {
+                    _ => {}
+                }
             }
         )
     }

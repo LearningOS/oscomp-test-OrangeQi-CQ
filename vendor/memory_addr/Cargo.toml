@@ -11,13 +11,15 @@
 
 [package]
 edition = "2021"
+rust-version = "1.70.0"
 name = "memory_addr"
-version = "0.3.1"
+version = "0.3.2"
 authors = [
     "Yuekai Jia <equation618@gmail.com>",
     "aarkegz <aarkegz@gmail.com>",
 ]
 build = false
+autolib = false
 autobins = false
 autoexamples = false
 autotests = false

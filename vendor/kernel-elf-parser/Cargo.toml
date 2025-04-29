@@ -12,7 +12,7 @@
 [package]
 edition = "2024"
 name = "kernel-elf-parser"
-version = "0.3.0"
+version = "0.3.2"
 authors = ["Youjie Zheng <zyj578335934@gmail.com>"]
 build = false
 autolib = false

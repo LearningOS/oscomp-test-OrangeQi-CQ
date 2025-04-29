@@ -12,9 +12,10 @@
 [package]
 edition = "2021"
 name = "defmt-parser"
-version = "0.4.1"
+version = "1.0.0"
 authors = ["The Knurling-rs developers"]
 build = false
+autolib = false
 autobins = false
 autoexamples = false
 autotests = false
@@ -31,6 +32,9 @@ repository = "https://github.com/knurling-rs/defmt"
 [package.metadata.docs.rs]
 rustdoc-args = ["--cfg=docsrs"]
 
+[features]
+unstable = []
+
 [lib]
 name = "defmt_parser"
 path = "src/lib.rs"
@@ -41,6 +45,3 @@ version = "2"
 [dev-dependencies.rstest]
 version = "0.19"
 default-features = false
-
-[features]
-unstable = []

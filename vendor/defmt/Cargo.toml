@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "defmt"
-version = "0.3.10"
+version = "1.0.1"
 authors = ["The Knurling-rs developers"]
 build = "build.rs"
 links = "defmt"
@@ -48,6 +48,14 @@ targets = [
     "thumbv7em-none-eabihf",
 ]
 
+[features]
+alloc = []
+avoid-default-panic = []
+encoding-raw = []
+encoding-rzcobs = []
+ip_in_core = []
+unstable-test = ["defmt-macros/unstable-test"]
+
 [lib]
 name = "defmt"
 path = "src/lib.rs"
@@ -72,18 +80,10 @@ path = "tests/ui.rs"
 version = "1"
 
 [dependencies.defmt-macros]
-version = "=0.4.0"
+version = "=1.0.1"
 
 [dev-dependencies.rustc_version]
 version = "0.4"
 
 [dev-dependencies.trybuild]
 version = "1"
-
-[features]
-alloc = []
-avoid-default-panic = []
-encoding-raw = []
-encoding-rzcobs = []
-ip_in_core = []
-unstable-test = ["defmt-macros/unstable-test"]

@@ -11,8 +11,9 @@
 
 [package]
 edition = "2024"
+rust-version = "1.85"
 name = "flatten_objects"
-version = "0.2.1"
+version = "0.2.3"
 authors = ["Yuekai Jia <equation618@gmail.com>"]
 build = false
 autolib = false
@@ -34,7 +35,6 @@ categories = [
 ]
 license = "GPL-3.0-or-later OR Apache-2.0 OR MulanPSL-2.0"
 repository = "https://github.com/arceos-org/flatten_objects"
-resolver = "2"
 
 [lib]
 name = "flatten_objects"

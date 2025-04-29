@@ -1,5 +1,5 @@
 project(lwext4 C)
-cmake_minimum_required(VERSION 3.4)
+cmake_minimum_required(VERSION 3.5)
 
 
 include_directories(include)

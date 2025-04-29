@@ -1,14 +1,19 @@
-//! A highly efficient logging framework that targets resource-constrained devices, like
-//! microcontrollers.
+//! A highly efficient logging framework that targets resource-constrained
+//! devices, like microcontrollers.
 //!
-//! Check out the defmt book at <https://defmt.ferrous-systems.com> for more information about how
-//! to use it.
+//! Check out the defmt book at <https://defmt.ferrous-systems.com> for more
+//! information about how to use it.
 //!
 //! # Compatibility
 //!
-//! The `defmt` wire format might change between major versions. Attempting to read a defmt stream
-//! with an incompatible version will result in an error. This means that you have to update both
-//! the host and target side if a breaking change in defmt is released.
+//! The `defmt` wire format might change between minor versions. Attempting to
+//! read a defmt stream with an incompatible version will result in an error,
+//! and any tool used to process that stream should first check for a symbol
+//! named like `_defmt_version_ = X`, where X indicates the wire format version
+//! in use.
+//!
+//! Updating your version of defmt might mean you also have to update your
+//! version of `defmt-print` or `defmt-decoder`.
 
 #![cfg_attr(not(feature = "unstable-test"), no_std)]
 // NOTE if you change this URL you'll also need to update all other crates in this repo

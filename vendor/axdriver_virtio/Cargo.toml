@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "axdriver_virtio"
-version = "0.1.0"
+version = "0.1.2"
 authors = ["Yuekai Jia <equation618@gmail.com>"]
 build = false
 autolib = false
@@ -26,7 +26,7 @@ documentation = "https://arceos-org.github.io/axdriver_crates/axdriver_virtio"
 readme = false
 keywords = [
     "arceos",
-    "dirver",
+    "driver",
     "vritio",
 ]
 categories = [

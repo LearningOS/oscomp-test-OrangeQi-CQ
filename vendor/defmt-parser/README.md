@@ -4,8 +4,6 @@
 
 For more details about the framework check the book at <https://defmt.ferrous-systems.com>.
 
-The git version of the defmt book can be viewed at <https://defmt-next.ferrous-systems.com/>.
-
 This library decodes `defmt` frames into Rust structures. It is mainly used by
 [`defmt-decoder`](https://crates.io/crates/defmt-decoder), and you should prefer
 using that crate to this one.
@@ -26,10 +24,10 @@ Sponsors].
 
 Licensed under either of
 
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or
-  http://www.apache.org/licenses/LICENSE-2.0)
+- Apache License, Version 2.0 ([LICENSE-APACHE](../LICENSE-APACHE) or
+  <http://www.apache.org/licenses/LICENSE-2.0>)
 
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+- MIT license ([LICENSE-MIT](../LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
 
 at your option.
 

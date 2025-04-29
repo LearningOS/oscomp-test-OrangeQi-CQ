@@ -1,61 +1,12 @@
 [patch.'https://github.com/oscomp/arceos.git']
-axstd = { path = "%AX_ROOT%/ulib/axstd" }
+axfeat = { path = "%AX_ROOT%/api/axfeat" }
 arceos_posix_api = { path = "%AX_ROOT%/api/arceos_posix_api" }
-axhal = { path = "%AX_ROOT%/modules/axhal" }
-axmm = { path = "%AX_ROOT%/modules/axmm" }
-axtask = { path = "%AX_ROOT%/modules/axtask" }
-axsync = { path = "%AX_ROOT%/modules/axsync" }
-axruntime = { path = "%AX_ROOT%/modules/axruntime" }
-axns = { path = "%AX_ROOT%/modules/axns" }
-axfs = { path = "%AX_ROOT%/modules/axfs" }
+
 axconfig = { path = "%AX_ROOT%/modules/axconfig" }
-
-[source.crates-io]
-replace-with = "vendored-sources"
-
-[source."git+https://github.com/Azure-stars/lwext4_rust.git"]
-git = "https://github.com/Azure-stars/lwext4_rust.git"
-replace-with = "vendored-sources"
-
-[source."git+https://github.com/arceos-org/allocator.git?tag=v0.1.1"]
-git = "https://github.com/arceos-org/allocator.git"
-tag = "v0.1.1"
-replace-with = "vendored-sources"
-
-[source."git+https://github.com/arceos-org/axdriver_crates.git?tag=v0.1.0"]
-git = "https://github.com/arceos-org/axdriver_crates.git"
-tag = "v0.1.0"
-replace-with = "vendored-sources"
-
-[source."git+https://github.com/arceos-org/linked_list.git?tag=v0.1.0"]
-git = "https://github.com/arceos-org/linked_list.git"
-tag = "v0.1.0"
-replace-with = "vendored-sources"
-
-[source."git+https://github.com/arceos-org/scheduler.git?tag=v0.1.0"]
-git = "https://github.com/arceos-org/scheduler.git"
-tag = "v0.1.0"
-replace-with = "vendored-sources"
-
-[source."git+https://github.com/jasonwhite/syscalls.git?rev=92624de"]
-git = "https://github.com/jasonwhite/syscalls.git"
-rev = "92624de"
-replace-with = "vendored-sources"
-
-[source."git+https://github.com/rafalh/rust-fatfs?rev=85f06e0"]
-git = "https://github.com/rafalh/rust-fatfs"
-rev = "85f06e0"
-replace-with = "vendored-sources"
-
-[source."git+https://github.com/rcore-os/smoltcp.git?rev=2ade274"]
-git = "https://github.com/rcore-os/smoltcp.git"
-rev = "2ade274"
-replace-with = "vendored-sources"
-
-[source."git+https://github.com/yfblock/page_table_multiarch.git?rev=c8a13b0"]
-git = "https://github.com/yfblock/page_table_multiarch.git"
-rev = "c8a13b0"
-replace-with = "vendored-sources"
-
-[source.vendored-sources]
-directory = "vendor"
+axfs = { path = "%AX_ROOT%/modules/axfs" }
+axhal = { path = "%AX_ROOT%/modules/axhal" }
+axlog = { path = "%AX_ROOT%/modules/axlog" }
+axmm = { path = "%AX_ROOT%/modules/axmm" }
+axns = { path = "%AX_ROOT%/modules/axns" }
+axsync = { path = "%AX_ROOT%/modules/axsync" }
+axtask = { path = "%AX_ROOT%/modules/axtask" }

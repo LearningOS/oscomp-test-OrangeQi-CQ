@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "defmt-macros"
-version = "0.4.0"
+version = "1.0.1"
 authors = ["The Knurling-rs developers"]
 build = "build.rs"
 autolib = false
@@ -29,13 +29,16 @@ keywords = [
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/knurling-rs/defmt"
 
+[features]
+unstable-test = []
+
 [lib]
 name = "defmt_macros"
 path = "src/lib.rs"
 proc-macro = true
 
 [dependencies.defmt-parser]
-version = "=0.4.1"
+version = "=1.0.0"
 
 [dependencies.proc-macro-error2]
 version = "2"
@@ -62,6 +65,3 @@ version = "1"
 [dev-dependencies.rstest]
 version = "0.19"
 default-features = false
-
-[features]
-unstable-test = []

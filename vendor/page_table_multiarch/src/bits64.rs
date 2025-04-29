@@ -1,5 +1,3 @@
-extern crate alloc;
-
 use crate::{GenericPTE, PagingHandler, PagingMetaData};
 use crate::{MappingFlags, PageSize, PagingError, PagingResult, TlbFlush, TlbFlushAll};
 use core::marker::PhantomData;
@@ -326,13 +324,7 @@ impl<M: PagingMetaData, PTE: GenericPTE, H: PagingHandler> PageTable64<M, PTE, H
         )
     }
 
-    /// Copy entries from another page table within the given virtual memory range.
-    pub fn copy_from(&mut self, other: &Self, start: M::VirtAddr, size: usize) {
-        if size == 0 {
-            return;
-        }
-        let src_table = self.table_of(other.root_paddr);
-        let dst_table = self.table_of_mut(self.root_paddr);
+    fn top_level_idx_range(&self, start: M::VirtAddr, size: usize) -> (usize, usize) {
         let index_fn = if M::LEVELS == 3 {
             p3_index
         } else if M::LEVELS == 4 {
@@ -344,7 +336,36 @@ impl<M: PagingMetaData, PTE: GenericPTE, H: PagingHandler> PageTable64<M, PTE, H
         let end_idx = index_fn(start.into() + size - 1) + 1;
         assert!(start_idx < ENTRY_COUNT);
         assert!(end_idx <= ENTRY_COUNT);
+        (start_idx, end_idx)
+    }
+
+    /// Copy entries from another page table within the given virtual memory range.
+    pub fn copy_from(&mut self, other: &Self, start: M::VirtAddr, size: usize) {
+        if size == 0 {
+            return;
+        }
+        let src_table = self.table_of(other.root_paddr);
+        let dst_table = self.table_of_mut(self.root_paddr);
+        let (start_idx, end_idx) = self.top_level_idx_range(start, size);
         dst_table[start_idx..end_idx].copy_from_slice(&src_table[start_idx..end_idx]);
+    }
+
+    /// Undoes the copy of entries from another page table within the given
+    /// virtual memory range.
+    ///
+    /// This is the inverse operation of [`PageTable64::copy_from`]. It might be
+    /// useful when you need to drop a page table, but some of its entries are
+    /// copied from another actively used page table, so you need to unlink the
+    /// shared entries first.
+    pub fn clear_copy_range(&mut self, start: M::VirtAddr, size: usize) {
+        if size == 0 {
+            return;
+        }
+        let table = self.table_of_mut(self.root_paddr);
+        let (start_idx, end_idx) = self.top_level_idx_range(start, size);
+        for pte in &mut table[start_idx..end_idx] {
+            pte.clear();
+        }
     }
 }
 
@@ -371,48 +392,22 @@ impl<M: PagingMetaData, PTE: GenericPTE, H: PagingHandler> PageTable64<M, PTE, H
     }
 
     fn next_table<'a>(&self, entry: &PTE) -> PagingResult<&'a [PTE]> {
-        #[cfg(not(target_arch = "loongarch64"))]
-        {
-            if !entry.is_present() {
-                Err(PagingError::NotMapped)
-            } else if entry.is_huge() {
-                Err(PagingError::MappedToHugePage)
-            } else {
-                Ok(self.table_of(entry.paddr()))
-            }
-        }
-        #[cfg(target_arch = "loongarch64")]
-        {
-            if entry.paddr().as_usize() == 0 {
-                Err(PagingError::NotMapped)
-            } else if entry.is_huge() {
-                Err(PagingError::MappedToHugePage)
-            } else {
-                Ok(self.table_of(entry.paddr()))
-            }
+        if entry.paddr().as_usize() == 0 {
+            Err(PagingError::NotMapped)
+        } else if entry.is_huge() {
+            Err(PagingError::MappedToHugePage)
+        } else {
+            Ok(self.table_of(entry.paddr()))
         }
     }
 
     fn next_table_mut<'a>(&mut self, entry: &PTE) -> PagingResult<&'a mut [PTE]> {
-        #[cfg(not(target_arch = "loongarch64"))]
-        {
-            if !entry.is_present() {
-                Err(PagingError::NotMapped)
-            } else if entry.is_huge() {
-                Err(PagingError::MappedToHugePage)
-            } else {
-                Ok(self.table_of_mut(entry.paddr()))
-            }
-        }
-        #[cfg(target_arch = "loongarch64")]
-        {
-            if entry.paddr().as_usize() == 0 {
-                Err(PagingError::NotMapped)
-            } else if entry.is_huge() {
-                Err(PagingError::MappedToHugePage)
-            } else {
-                Ok(self.table_of_mut(entry.paddr()))
-            }
+        if entry.paddr().as_usize() == 0 {
+            Err(PagingError::NotMapped)
+        } else if entry.is_huge() {
+            Err(PagingError::MappedToHugePage)
+        } else {
+            Ok(self.table_of_mut(entry.paddr()))
         }
     }
 

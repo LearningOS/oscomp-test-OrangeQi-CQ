@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.62"
 name = "linkme-impl"
-version = "0.3.31"
+version = "0.3.32"
 authors = ["David Tolnay <dtolnay@gmail.com>"]
 build = "build.rs"
 autolib = false
@@ -28,8 +28,17 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/dtolnay/linkme"
 
 [package.metadata.docs.rs]
-rustdoc-args = ["--generate-link-to-definition"]
+rustdoc-args = [
+    "--generate-link-to-definition",
+    "--extern-html-root-url=core=https://doc.rust-lang.org",
+    "--extern-html-root-url=alloc=https://doc.rust-lang.org",
+    "--extern-html-root-url=std=https://doc.rust-lang.org",
+    "--extern-html-root-url=proc_macro=https://doc.rust-lang.org",
+]
 targets = ["x86_64-unknown-linux-gnu"]
+
+[features]
+used_linker = []
 
 [lib]
 name = "linkme_impl"
@@ -44,6 +53,3 @@ version = "1.0.35"
 
 [dependencies.syn]
 version = "2.0.46"
-
-[features]
-used_linker = []

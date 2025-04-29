@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.85"
 name = "page_table_entry"
-version = "0.5.1"
+version = "0.5.3"
 authors = ["Yuekai Jia <equation618@gmail.com>"]
 build = false
 autolib = false

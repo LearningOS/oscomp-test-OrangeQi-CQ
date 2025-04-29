@@ -12,9 +12,10 @@
 [package]
 edition = "2021"
 name = "axio"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Yuekai Jia <equation618@gmail.com>"]
 build = false
+autolib = false
 autobins = false
 autoexamples = false
 autotests = false
@@ -32,13 +33,13 @@ categories = ["no-std"]
 license = "GPL-3.0-or-later OR Apache-2.0 OR MulanPSL-2.0"
 repository = "https://github.com/arceos-org/axio"
 
+[features]
+alloc = []
+default = []
+
 [lib]
 name = "axio"
 path = "src/lib.rs"
 
 [dependencies.axerrno]
 version = "0.1"
-
-[features]
-alloc = []
-default = []

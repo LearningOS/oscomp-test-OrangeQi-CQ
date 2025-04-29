@@ -30,9 +30,8 @@
 //! ```
 
 #![no_std]
-#![feature(maybe_uninit_uninit_array)]
 
-use bitmaps::Bitmap;
+use bitmaps::{Bitmap, Bits, BitsImpl, Iter};
 use core::mem::MaybeUninit;
 
 /// A container that stores numbered objects.
@@ -42,13 +41,19 @@ use core::mem::MaybeUninit;
 /// `CAP` is the maximum number of objects that can be held. It also equals the
 /// maximum ID that can be assigned plus one. Currently, `CAP` must not be
 /// greater than 1024.
-pub struct FlattenObjects<T, const CAP: usize> {
+pub struct FlattenObjects<T, const CAP: usize>
+where
+    BitsImpl<{ CAP }>: Bits,
+{
     objects: [MaybeUninit<T>; CAP],
-    id_bitmap: Bitmap<1024>,
+    id_bitmap: Bitmap<CAP>,
     count: usize,
 }
 
-impl<T, const CAP: usize> FlattenObjects<T, CAP> {
+impl<T, const CAP: usize> FlattenObjects<T, CAP>
+where
+    BitsImpl<{ CAP }>: Bits,
+{
     /// Creates a new empty `FlattenObjects`.
     ///
     /// # Panics
@@ -64,15 +69,14 @@ impl<T, const CAP: usize> FlattenObjects<T, CAP> {
     /// assert_eq!(objects.capacity(), 20);
     /// ```
     ///
-    /// ```should_panic
+    /// ```compile_fail
     /// use flatten_objects::FlattenObjects;
     ///
     /// let objects = FlattenObjects::<u32, 1025>::new();
     /// ```
     pub const fn new() -> Self {
-        assert!(CAP <= 1024);
         Self {
-            objects: MaybeUninit::uninit_array(),
+            objects: [const { MaybeUninit::uninit() }; CAP],
             // SAFETY: zero initialization is OK for `id_bitmap` (an array of integers).
             id_bitmap: unsafe { MaybeUninit::zeroed().assume_init() },
             count: 0,
@@ -319,5 +323,25 @@ impl<T, const CAP: usize> FlattenObjects<T, CAP> {
         } else {
             None
         }
+    }
+
+    /// Gets an iterator over the IDs of the assigned objects.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use flatten_objects::FlattenObjects;
+    ///
+    /// let mut objects = FlattenObjects::<u32, 20>::new();
+    /// objects.add(23);        // Assign ID 0.
+    /// objects.add_at(5, 42);  // Assign ID 5.
+    /// let mut iter = objects.ids();
+    /// assert_eq!(iter.next(), Some(0));
+    /// assert_eq!(iter.next(), Some(5));
+    /// assert_eq!(iter.next(), None);
+    /// ```
+    #[inline]
+    pub fn ids(&self) -> Iter<CAP> {
+        self.id_bitmap.into_iter()
     }
 }

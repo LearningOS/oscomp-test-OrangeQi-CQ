@@ -92,7 +92,7 @@ impl From<MappingFlags> for PTEFlags {
         if f.is_empty() {
             return Self::empty();
         }
-        let mut ret = Self::V | Self::P | Self::D;
+        let mut ret = Self::V | Self::P;
         if !f.contains(MappingFlags::READ) {
             ret |= Self::NR;
         }
@@ -125,11 +125,16 @@ pub struct LA64PTE(u64);
 
 impl LA64PTE {
     const PHYS_ADDR_MASK: u64 = 0x0000_ffff_ffff_f000; // bits 12..48
+
+    /// Creates an empty descriptor with all bits set to zero.
+    pub const fn empty() -> Self {
+        Self(0)
+    }
 }
 
 impl GenericPTE for LA64PTE {
     fn new_page(paddr: PhysAddr, flags: MappingFlags, is_huge: bool) -> Self {
-        let mut flags = PTEFlags::from(flags);
+        let mut flags = PTEFlags::from(flags) | PTEFlags::D;
         if is_huge {
             flags |= PTEFlags::GH;
         }
@@ -148,7 +153,7 @@ impl GenericPTE for LA64PTE {
         self.0 = (self.0 & !Self::PHYS_ADDR_MASK) | (paddr.as_usize() as u64 & Self::PHYS_ADDR_MASK)
     }
     fn set_flags(&mut self, flags: MappingFlags, is_huge: bool) {
-        let mut flags = PTEFlags::from(flags);
+        let mut flags = PTEFlags::from(flags) | PTEFlags::D;
         if is_huge {
             flags |= PTEFlags::GH;
         }

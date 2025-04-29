@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.62"
 name = "prettyplease"
-version = "0.2.29"
+version = "0.2.32"
 authors = ["David Tolnay <dtolnay@gmail.com>"]
 build = "build.rs"
 links = "prettyplease02"
@@ -32,7 +32,12 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/dtolnay/prettyplease"
 
 [package.metadata.docs.rs]
-rustdoc-args = ["--generate-link-to-definition"]
+rustdoc-args = [
+    "--generate-link-to-definition",
+    "--extern-html-root-url=core=https://doc.rust-lang.org",
+    "--extern-html-root-url=alloc=https://doc.rust-lang.org",
+    "--extern-html-root-url=std=https://doc.rust-lang.org",
+]
 targets = ["x86_64-unknown-linux-gnu"]
 
 [package.metadata.playground]
@@ -44,7 +49,6 @@ verbatim = ["syn/parsing"]
 [lib]
 name = "prettyplease"
 path = "src/lib.rs"
-doc-scrape-examples = false
 
 [[test]]
 name = "test"

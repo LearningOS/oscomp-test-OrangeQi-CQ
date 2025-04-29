@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "axdriver_net"
-version = "0.1.0"
+version = "0.1.2"
 authors = [
     "Yuekai Jia <equation618@gmail.com>",
     "ChengXiang Qi <kuangjux@outlook.com>",
@@ -29,7 +29,7 @@ documentation = "https://arceos-org.github.io/axdriver_crates/axdriver_net"
 readme = false
 keywords = [
     "arceos",
-    "dirver",
+    "driver",
     "nic",
 ]
 categories = [
@@ -42,6 +42,7 @@ repository = "https://github.com/arceos-org/axdriver_crates"
 
 [features]
 default = []
+fxmac = ["dep:fxmac_rs"]
 ixgbe = ["dep:ixgbe-driver"]
 
 [lib]
@@ -55,6 +56,11 @@ spin = "0.9"
 [dependencies.axdriver_base]
 version = "0.1"
 path = "../axdriver_base"
+
+[dependencies.fxmac_rs]
+git = "https://github.com/elliott10/fxmac_rs.git"
+rev = "0dbc3916"
+optional = true
 
 [dependencies.ixgbe-driver]
 git = "https://github.com/KuangjuX/ixgbe-driver.git"

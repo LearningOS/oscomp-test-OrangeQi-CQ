@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.85"
 name = "page_table_multiarch"
-version = "0.5.1"
+version = "0.5.3"
 authors = ["Yuekai Jia <equation618@gmail.com>"]
 build = false
 autolib = false
@@ -55,7 +55,7 @@ log = "0.4"
 memory_addr = "0.3"
 
 [dependencies.page_table_entry]
-version = "0.5.1"
+version = "0.5.2"
 path = "../page_table_entry"
 
 [target.'cfg(any(target_arch = "riscv32", target_arch = "riscv64", doc))'.dependencies.riscv]

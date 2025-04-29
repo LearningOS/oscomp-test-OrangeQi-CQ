@@ -115,7 +115,14 @@ impl<'a> ELFParser<'a> {
 
     /// The offset of the program header table in the ELF file.
     pub fn phdr(&self) -> usize {
-        self.elf.header.pt2.ph_offset() as usize + self.base
+        self.elf.header.pt2.ph_offset() as usize
+            + self.base
+            + self
+                .elf
+                .program_iter()
+                .find(|ph| ph.get_type() == Ok(xmas_elf::program::Type::Load))
+                .map(|ph| ph.virtual_addr() as usize)
+                .unwrap_or(0)
     }
 
     /// The base address of the ELF file loaded into the memory.
@@ -135,7 +142,7 @@ impl<'a> ELFParser<'a> {
     /// * `pagesz` - The page size of the system
     ///
     /// Details about auxiliary vectors are described in <https://articles.manugarg.com/aboutelfauxiliaryvectors.html>
-    pub fn auxv_vector(&self, pagesz: usize) -> [AuxvEntry; 17] {
+    pub fn auxv_vector(&self, pagesz: usize) -> [AuxvEntry; 16] {
         [
             AuxvEntry::new(AuxvType::PHDR, self.phdr()),
             AuxvEntry::new(AuxvType::PHENT, self.phent()),
@@ -153,7 +160,6 @@ impl<'a> ELFParser<'a> {
             AuxvEntry::new(AuxvType::EGID, 0),
             AuxvEntry::new(AuxvType::RANDOM, 0),
             AuxvEntry::new(AuxvType::EXECFN, 0),
-            AuxvEntry::new(AuxvType::NULL, 0),
         ]
     }
 

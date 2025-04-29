@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.5)
 
 project(nimbos_user)
 enable_language(C ASM)
@@ -17,7 +17,6 @@ elseif (${ARCH} STREQUAL aarch64)
     set(CMAKE_C_FLAGS       "-mgeneral-regs-only")
 elseif (${ARCH} STREQUAL loongarch64)
     set(CMAKE_C_FLAGS       "-march=loongarch64")
-    set(PREFIX ${ARCH}-unknown-linux-musl-)
 else()
     message("Unsupported arch: ${ARCH}")
 endif ()

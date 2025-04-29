@@ -61,9 +61,11 @@ impl<const PAGE_SIZE: usize> BaseAllocator for BitmapPageAllocator<PAGE_SIZE> {
 
         // Calculate the base offset stored in the real [`BitAlloc`] instance.
         self.base = crate::align_down(start, MAX_ALIGN_1GB);
+
         // Range in bitmap: [start - self.base, start - self.base + total_pages * PAGE_SIZE)
         let start = start - self.base;
         let start_idx = start / PAGE_SIZE;
+
         self.inner.insert(start_idx..start_idx + self.total_pages);
     }
 

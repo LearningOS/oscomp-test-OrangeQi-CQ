@@ -12,7 +12,7 @@
 [package]
 edition = "2018"
 name = "raw-cpuid"
-version = "11.4.0"
+version = "11.5.0"
 authors = ["Gerd Zellweger <mail@gerdzellweger.com>"]
 build = false
 autolib = false
@@ -37,6 +37,23 @@ categories = [
 ]
 license = "MIT"
 repository = "https://github.com/gz/rust-cpuid"
+
+[features]
+cli = [
+    "display",
+    "clap",
+]
+display = [
+    "std",
+    "termimad",
+    "serde_json",
+    "serialize",
+]
+serialize = [
+    "serde",
+    "serde_derive",
+]
+std = []
 
 [lib]
 name = "raw_cpuid"
@@ -109,20 +126,3 @@ features = ["macros"]
 
 [dev-dependencies.rustversion]
 version = "1.0"
-
-[features]
-cli = [
-    "display",
-    "clap",
-]
-display = [
-    "std",
-    "termimad",
-    "serde_json",
-    "serialize",
-]
-serialize = [
-    "serde",
-    "serde_derive",
-]
-std = []
