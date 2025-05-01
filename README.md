@@ -229,3 +229,6 @@ If you want to add **executable file** directly, the specific steps are as follo
       ```
 
       This completes the execution of the custom test case.
+
+
+比赛题目 [testsures-for-oskernel](https://github.com/oscomp/testsuits-for-oskernel/tree/pre-2025)
