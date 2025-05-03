@@ -1,16 +1,13 @@
-//! User address space management.
-
 use core::ffi::CStr;
 
-use alloc::{string::String, vec};
+use alloc::{borrow::ToOwned, string::String, vec, vec::Vec};
 use axerrno::{AxError, AxResult};
-use axhal::paging::MappingFlags;
+use axhal::{mem::virt_to_phys, paging::MappingFlags};
 use axmm::{AddrSpace, kernel_aspace};
 use kernel_elf_parser::{AuxvEntry, ELFParser, app_stack_region};
 use memory_addr::{MemoryAddr, PAGE_SIZE_4K, VirtAddr};
 use xmas_elf::{ElfFile, program::SegmentData};
 
-/// Creates a new empty user address space.
 pub fn new_user_aspace_empty() -> AxResult<AddrSpace> {
     AddrSpace::new_empty(
         VirtAddr::from_usize(axconfig::plat::USER_SPACE_BASE),
@@ -27,6 +24,22 @@ pub fn copy_from_kernel(aspace: &mut AddrSpace) -> AxResult {
         // kernel portion to the user page table.
         aspace.copy_mappings_from(&kernel_aspace().lock())?;
     }
+    Ok(())
+}
+
+unsafe extern "C" {
+    fn start_signal_trampoline();
+}
+
+/// Map the signal trampoline to the user address space.
+pub fn map_trampoline(aspace: &mut AddrSpace) -> AxResult {
+    let signal_trampoline_paddr = virt_to_phys((start_signal_trampoline as usize).into());
+    aspace.map_linear(
+        axconfig::plat::SIGNAL_TRAMPOLINE.into(),
+        signal_trampoline_paddr,
+        PAGE_SIZE_4K,
+        MappingFlags::READ | MappingFlags::EXECUTE | MappingFlags::USER,
+    )?;
     Ok(())
 }
 
@@ -98,7 +111,24 @@ pub fn load_user_app(
     if args.is_empty() {
         return Err(AxError::InvalidInput);
     }
-    let file_data = axfs::api::read(args[0].as_str())?;
+    let file_data = axfs::api::read(if args[0].starts_with("/bin/") {
+        "/musl/busybox"
+    } else {
+        args[0].as_str()
+    })?;
+    if file_data.starts_with(b"#!") {
+        let head = &file_data[2..file_data.len().min(256)];
+        let pos = head.iter().position(|c| *c == b'\n').unwrap_or(head.len());
+        let line = core::str::from_utf8(&head[..pos]).map_err(|_| AxError::InvalidData)?;
+
+        let new_args: Vec<String> = line
+            .trim()
+            .splitn(2, |c: char| c.is_ascii_whitespace())
+            .map(|s| s.trim_ascii().to_owned())
+            .chain(args.iter().cloned())
+            .collect();
+        return load_user_app(uspace, &new_args, envs);
+    }
     let elf = ElfFile::new(&file_data).map_err(|_| AxError::InvalidData)?;
 
     if let Some(interp) = elf

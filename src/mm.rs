@@ -3,9 +3,10 @@ use axhal::{
     paging::MappingFlags,
     trap::{PAGE_FAULT, register_trap_handler},
 };
+use axsignal::ctypes::SignalInfo;
 use axtask::{TaskExtRef, current};
-use linux_raw_sys::general::SIGSEGV;
-use starry_api::do_exit;
+use linux_raw_sys::general::{RLIMIT_STACK, SI_KERNEL, SIGSEGV};
+use starry_api::{do_exit, send_signal_process};
 use starry_core::mm::is_accessing_user_memory;
 
 #[register_trap_handler(PAGE_FAULT)]
@@ -19,6 +20,20 @@ fn handle_page_fault(vaddr: VirtAddr, access_flags: MappingFlags, is_user: bool)
     }
 
     let curr = current();
+    if (axconfig::plat::USER_STACK_TOP - axconfig::plat::USER_STACK_SIZE
+        ..axconfig::plat::USER_STACK_TOP)
+        .contains(&vaddr.as_usize())
+    {
+        // Stack extension, check rlimit
+        let rlim = &curr.task_ext().process_data().rlim.read()[RLIMIT_STACK];
+        let size = axconfig::plat::USER_STACK_TOP - vaddr.as_usize();
+        if size as u64 > rlim.current {
+            send_signal_process(
+                &curr.task_ext().thread.process(),
+                SignalInfo::new(SIGSEGV, SI_KERNEL),
+            );
+        }
+    }
     if !curr
         .task_ext()
         .process_data()

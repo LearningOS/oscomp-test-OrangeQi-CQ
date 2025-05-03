@@ -5,12 +5,40 @@
 #[macro_use]
 extern crate axlog;
 extern crate alloc;
+extern crate axruntime;
 
 mod entry;
 mod mm;
 mod syscall;
 
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
+use axprocess::Process;
+use axtask::current;
+
+fn parse_cmd(cmd: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut current_arg = String::new();
+    let mut in_quotes = false;
+
+    for c in cmd.chars() {
+        match c {
+            '"' => in_quotes = !in_quotes,
+            ' ' if !in_quotes => {
+                if !current_arg.is_empty() {
+                    args.push(current_arg.clone());
+                    current_arg.clear();
+                }
+            }
+            _ => current_arg.push(c),
+        }
+    }
+
+    if !current_arg.is_empty() {
+        args.push(current_arg);
+    }
+
+    args
+}
 
 fn run_single_testcase(testcase: &str) {
     error!("Start running user task {}", testcase);
@@ -58,4 +86,5 @@ fn main() {
     // list_all_testcases();
     run_all_testcases();
     // run_single_testcase("/musl/runtest.exe -w entry-static.exe argv");
+    // run_single_testcase("/musl/entry-static.exe argv");
 }

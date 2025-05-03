@@ -6,12 +6,8 @@ use bitflags::bitflags;
 use linux_raw_sys::general::{
     __WALL, __WCLONE, __WNOTHREAD, WCONTINUED, WEXITED, WNOHANG, WNOWAIT, WUNTRACED,
 };
-use macro_rules_attribute::apply;
 
-use crate::{
-    ptr::{PtrWrapper, UserPtr},
-    syscall_instrument,
-};
+use crate::ptr::{UserPtr, nullable};
 
 bitflags! {
     #[derive(Debug)]
@@ -58,13 +54,13 @@ impl WaitPid {
     }
 }
 
-#[apply(syscall_instrument)]
 pub fn sys_waitpid(pid: i32, exit_code_ptr: UserPtr<i32>, options: u32) -> LinuxResult<isize> {
     let options = WaitOptions::from_bits_truncate(options);
     info!("sys_waitpid <= pid: {:?}, options: {:?}", pid, options);
 
     let curr = current();
     let process = curr.task_ext().thread.process();
+    let proc_data = curr.task_ext().process_data();
 
     let pid = if pid == -1 {
         WaitPid::Any
@@ -85,21 +81,20 @@ pub fn sys_waitpid(pid: i32, exit_code_ptr: UserPtr<i32>, options: u32) -> Linux
         return Err(LinuxError::ECHILD);
     }
 
-    let exit_code = exit_code_ptr.nullable(UserPtr::get)?;
+    let exit_code = nullable!(exit_code_ptr.get_as_mut())?;
     loop {
         if let Some(child) = children.iter().find(|child| child.is_zombie()) {
             if !options.contains(WaitOptions::WNOWAIT) {
                 child.free();
             }
             if let Some(exit_code) = exit_code {
-                unsafe { exit_code.write(child.exit_code()) };
+                *exit_code = child.exit_code();
             }
             return Ok(child.pid() as _);
         } else if options.contains(WaitOptions::WNOHANG) {
             return Ok(0);
         } else {
-            // TODO: process wait queue
-            crate::sys_sched_yield()?;
+            proc_data.child_exit_wq.wait();
         }
     }
 }

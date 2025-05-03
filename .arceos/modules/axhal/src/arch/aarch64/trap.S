@@ -1,5 +1,5 @@
 .macro SAVE_REGS
-    sub     sp, sp, {trapframe_size}
+    sub     sp, sp, 34 * 8
     stp     x0, x1, [sp]
     stp     x2, x3, [sp, 2 * 8]
     stp     x4, x5, [sp, 4 * 8]
@@ -15,19 +15,13 @@
     stp     x24, x25, [sp, 24 * 8]
     stp     x26, x27, [sp, 26 * 8]
     stp     x28, x29, [sp, 28 * 8]
-    str     x30, [sp, 30 * 8]
 
     mrs     x9, sp_el0
-    mrs     x10, tpidr_el0
-    mrs     x11, elr_el1
-    mrs     x12, spsr_el1
-    stp     x9, x10, [sp, 31 * 8]
-    stp     x11, x12, [sp, 33 * 8]
-
-    # restore kernel tpidr_el0
-    mrs     x1, tpidrro_el0
-    msr     tpidr_el0, x1
-
+    mrs     x10, elr_el1
+    mrs     x11, spsr_el1
+    stp     x30, x9, [sp, 30 * 8]
+    stp     x10, x11, [sp, 32 * 8]
+    
     # We may have interrupted userspace, or a guest, or exit-from or 
     # return-to either of those. So we can't trust sp_el0, and need to
     # restore it.
@@ -35,18 +29,12 @@
 .endm
 
 .macro RESTORE_REGS
-    # backup kernel tpidr_el0
-    mrs     x1, tpidr_el0
-    msr     tpidrro_el0, x1
-
-    ldp     x11, x12, [sp, 33 * 8]
-    ldp     x9, x10, [sp, 31 * 8]
+    ldp     x10, x11, [sp, 32 * 8]
+    ldp     x30, x9, [sp, 30 * 8]
     msr     sp_el0, x9
-    msr     tpidr_el0, x10
-    msr     elr_el1, x11
-    msr     spsr_el1, x12
+    msr     elr_el1, x10
+    msr     spsr_el1, x11
 
-    ldr     x30, [sp, 30 * 8]
     ldp     x28, x29, [sp, 28 * 8]
     ldp     x26, x27, [sp, 26 * 8]
     ldp     x24, x25, [sp, 24 * 8]
@@ -62,7 +50,7 @@
     ldp     x4, x5, [sp, 4 * 8]
     ldp     x2, x3, [sp, 2 * 8]
     ldp     x0, x1, [sp]
-    add     sp, sp, {trapframe_size}
+    add     sp, sp, 34 * 8
 .endm
 
 .macro INVALID_EXCP, kind, source
@@ -75,18 +63,20 @@
     b       .Lexception_return
 .endm
 
-.macro HANDLE_SYNC
+.macro HANDLE_SYNC, source
 .p2align 7
     SAVE_REGS
     mov     x0, sp
+    mov     x1, \source
     bl      handle_sync_exception
     b       .Lexception_return
 .endm
 
-.macro HANDLE_IRQ
+.macro HANDLE_IRQ, source
 .p2align 7
     SAVE_REGS
     mov     x0, sp
+    mov     x1, \source
     bl      handle_irq_exception
     b       .Lexception_return
 .endm
@@ -102,14 +92,14 @@ exception_vector_base:
     INVALID_EXCP 3 0
 
     // current EL, with SP_ELx
-    HANDLE_SYNC
-    HANDLE_IRQ
+    HANDLE_SYNC 1
+    HANDLE_IRQ 1
     INVALID_EXCP 2 1
     INVALID_EXCP 3 1
 
     // lower EL, aarch64
-    HANDLE_SYNC
-    HANDLE_IRQ
+    HANDLE_SYNC 2
+    HANDLE_IRQ 2
     INVALID_EXCP 2 2
     INVALID_EXCP 3 2
 

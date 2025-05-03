@@ -519,9 +519,7 @@ impl CurrentTask {
     pub(crate) unsafe fn init_current(init_task: AxTaskRef) {
         assert!(init_task.is_init());
         #[cfg(feature = "tls")]
-        unsafe {
-            axhal::arch::write_thread_pointer(init_task.tls.tls_ptr() as usize);
-        }
+        axhal::arch::write_thread_pointer(init_task.tls.tls_ptr() as usize);
         let ptr = Arc::into_raw(init_task);
         unsafe {
             axhal::cpu::set_current_task_ptr(ptr);

@@ -1,5 +1,4 @@
 use alloc::sync::Arc;
-use arceos_posix_api::FD_TABLE;
 use axerrno::{LinuxError, LinuxResult};
 use axfs::{CURRENT_DIR, CURRENT_DIR_PATH};
 use axhal::arch::{TrapFrame, UspaceContext};
@@ -7,13 +6,18 @@ use axprocess::Pid;
 use axsync::Mutex;
 use axtask::{TaskExtRef, current};
 use bitflags::bitflags;
-use linux_raw_sys::general::*;
+use linux_raw_sys::general::{
+    CLONE_CHILD_CLEARTID, CLONE_CHILD_SETTID, CLONE_FILES, CLONE_FS, CLONE_IO, CLONE_NEWCGROUP,
+    CLONE_NEWIPC, CLONE_NEWNET, CLONE_NEWNS, CLONE_NEWPID, CLONE_NEWUSER, CLONE_NEWUTS,
+    CLONE_PARENT, CLONE_PARENT_SETTID, CLONE_PTRACE, CLONE_SETTLS, CLONE_SIGHAND, CLONE_SYSVSEM,
+    CLONE_THREAD, CLONE_UNTRACED, CLONE_VFORK, CLONE_VM, SIGCHLD,
+};
 use starry_core::{
     mm::copy_from_kernel,
     task::{ProcessData, TaskExt, ThreadData, add_thread_to_table, new_user_task},
 };
 
-use crate::ptr::{PtrWrapper, UserPtr};
+use crate::fd::FD_TABLE;
 
 bitflags! {
     /// Options for use with [`sys_clone`].
@@ -79,55 +83,42 @@ bitflags! {
 }
 
 pub fn sys_clone(
-    tf: &TrapFrame,
     flags: u32,
     stack: usize,
-    parent_tid: usize,
-    #[cfg(any(target_arch = "x86_64", target_arch = "loongarch64"))] child_tid: usize,
-    tls: usize,
-    #[cfg(not(any(target_arch = "x86_64", target_arch = "loongarch64")))] child_tid: usize,
+    _ptid: usize,
+    _tls: usize,
+    _ctid: usize,
 ) -> LinuxResult<isize> {
     const FLAG_MASK: u32 = 0xff;
-    let exit_signal = flags & FLAG_MASK;
+    let _exit_signal = flags & FLAG_MASK;
     let flags = CloneFlags::from_bits_truncate(flags & !FLAG_MASK);
 
     info!(
-        "sys_clone <= flags: {:?}, exit_signal: {}, stack: {:#x}, ptid: {:#x}, ctid: {:#x}, tls: {:#x}",
-        flags, exit_signal, stack, parent_tid, child_tid, tls
+        "sys_clone <= flags: {:?}, exit_signal: {}, stack: {:#x}",
+        flags, _exit_signal, stack
     );
 
-    if flags.contains(CloneFlags::THREAD) && !flags.contains(CloneFlags::VM | CloneFlags::SIGHAND) {
-        return Err(LinuxError::EINVAL);
-    }
+    let curr = current();
+    let mut new_task = new_user_task(curr.name());
 
-    let mut new_uctx = UspaceContext::from(tf);
+    // TODO: check SETTLS
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    new_task
+        .ctx_mut()
+        .set_tls(axhal::arch::read_thread_pointer().into());
+
+    let trap_frame = read_trapframe_from_kstack(curr.get_kernel_stack_top().unwrap());
+    let mut new_uctx = UspaceContext::from(&trap_frame);
     if stack != 0 {
         new_uctx.set_sp(stack);
     }
-    if flags.contains(CloneFlags::SETTLS) {
-        new_uctx.set_tls(tls);
-    }
     new_uctx.set_retval(0);
 
-    let set_child_tid = if flags.contains(CloneFlags::CHILD_SETTID) {
-        unsafe { UserPtr::<u32>::from(child_tid).get()?.as_mut() }
-    } else {
-        None
-    };
-
-    let curr = current();
-    let mut new_task = new_user_task(curr.name(), new_uctx, set_child_tid);
-
     let tid = new_task.id().as_u64() as Pid;
-    if flags.contains(CloneFlags::PARENT_SETTID) {
-        unsafe { UserPtr::<Pid>::from(parent_tid).get()?.write(tid) };
-    }
-
     let process = if flags.contains(CloneFlags::THREAD) {
-        new_task
-            .ctx_mut()
-            .set_page_table_root(axhal::arch::read_page_table_root());
-
+        if !flags.contains(CloneFlags::VM | CloneFlags::SIGHAND) {
+            return Err(LinuxError::EINVAL);
+        }
         curr.task_ext().thread.process()
     } else {
         // create a new process
@@ -187,19 +178,20 @@ pub fn sys_clone(
         &builder.data(process_data).build()
     };
 
-    let thread_data = ThreadData::new();
-    if flags.contains(CloneFlags::CHILD_CLEARTID) {
-        thread_data.set_clear_child_tid(child_tid);
-    }
-
-    let thread = process.new_thread(tid).data(thread_data).build();
+    let thread = process.new_thread(tid).data(ThreadData::new()).build();
     add_thread_to_table(&thread);
-    new_task.init_task_ext(TaskExt::new(thread));
+    new_task.init_task_ext(TaskExt::new(new_uctx, thread));
     axtask::spawn_task(new_task);
 
     Ok(tid as _)
 }
 
-pub fn sys_fork(tf: &TrapFrame) -> LinuxResult<isize> {
-    sys_clone(tf, SIGCHLD, 0, 0, 0, 0)
+fn read_trapframe_from_kstack(kstack_top: usize) -> TrapFrame {
+    let trap_frame_size = core::mem::size_of::<TrapFrame>();
+    let trap_frame_ptr = (kstack_top - trap_frame_size) as *mut TrapFrame;
+    unsafe { *trap_frame_ptr }
+}
+
+pub fn sys_fork() -> LinuxResult<isize> {
+    sys_clone(SIGCHLD, 0, 0, 0, 0)
 }
