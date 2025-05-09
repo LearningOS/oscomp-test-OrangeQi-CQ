@@ -49,32 +49,32 @@ pub const IPC_RMID: u32 = 0;
 pub const IPC_SET: u32 = 1;
 pub const IPC_STAT: u32 = 2;
 
-#[repr(C)]
-/// Data structure describing a shared memory segment.
-/// see <https://github.com/bminor/glibc/blob/master/bits/shm.h>
-pub struct CTypeIpcPerm {
-    pub key: u32,                
-    pub uid: u32,                
-    pub gid: u32,               
-    pub cuid: u32,
-    pub cgid: u32, 
-    pub mode: u16, 
-    pub seq: u16,
-}
+// #[repr(C)]
+// /// Data structure describing a shared memory segment.
+// /// see <https://github.com/bminor/glibc/blob/master/bits/shm.h>
+// pub struct CTypeIpcPerm {
+//     pub key: u32,                
+//     pub uid: u32,                
+//     pub gid: u32,               
+//     pub cuid: u32,
+//     pub cgid: u32, 
+//     pub mode: u16, 
+//     pub seq: u16,
+// }
 
-/// Data structure describing a shared memory segment.
-/// see <https://github.com/bminor/glibc/blob/master/bits/shm.h>
-#[repr(C)]
-pub struct CTypeShmidDs {
-    pub shm_perm: IpcPerm,        
-    pub shm_segsz: usize,         
-    pub shm_atime: SystemTime,    
-    pub shm_dtime: SystemTime,    
-    pub shm_ctime: SystemTime,    
-    pub shm_cpid: RawFd,         
-    pub shm_lpid: RawFd,         
-    pub shm_nattch: u32,         
-}
+// /// Data structure describing a shared memory segment.
+// /// see <https://github.com/bminor/glibc/blob/master/bits/shm.h>
+// #[repr(C)]
+// pub struct CTypeShmidDs {
+//     pub shm_perm: IpcPerm,        
+//     pub shm_segsz: usize,         
+//     pub shm_atime: SystemTime,    
+//     pub shm_dtime: SystemTime,    
+//     pub shm_ctime: SystemTime,    
+//     pub shm_cpid: RawFd,         
+//     pub shm_lpid: RawFd,         
+//     pub shm_nattch: u32,         
+// }
 
 /**
  * struct ShmInner is used to maintain the shared memory in kernel, similar to shmid_ds in Linux.
