@@ -176,6 +176,32 @@ fn handle_syscall(tf: &mut TrapFrame, syscall_num: usize) -> isize {
         Sysno::rt_sigreturn => sys_rt_sigreturn(tf),
         Sysno::kill => sys_kill(tf.arg0() as _, tf.arg1() as _),
         Sysno::tgkill => sys_tgkill(tf.arg0() as _, tf.arg1() as _, tf.arg2() as _),
+
+
+
+        Sysno::shmget => sys_shmget(
+            tf.arg0() as _,
+            tf.arg1() as _,
+            tf.arg2() as _,
+        ),
+
+        Sysno::shmat => sys_shmat(
+            tf.arg0() as _,
+            tf.arg1() as _,
+            tf.arg2() as _,
+        ),
+
+        Sysno::shmctl => sys_shmctl(
+            tf.arg0() as _,
+            tf.arg1() as _,
+            tf.arg2() as _,
+        ),
+        
+        Sysno::shmdt => sys_shmdt(
+            tf.arg0() as _,
+        ),
+        
+        
         Sysno::futex => {
             warn!("preventing pthread from blocking testing");
             do_exit(SIGSYS as _, true);
@@ -184,6 +210,7 @@ fn handle_syscall(tf: &mut TrapFrame, syscall_num: usize) -> isize {
             warn!("Unimplemented syscall: {}", sysno);
             Err(LinuxError::ENOSYS)
         }
+
     };
     let result = result.unwrap_or_else(|err| -err.code() as isize);
     time_stat_from_kernel_to_user();

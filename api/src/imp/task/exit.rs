@@ -3,7 +3,7 @@ use axtask::{TaskExtRef, current};
 use linux_raw_sys::general::{SI_KERNEL, SIGCHLD, SIGKILL};
 use starry_core::task::ProcessData;
 
-use crate::{fd::FD_TABLE, send_signal_process, send_signal_thread};
+use crate::{fd::FD_TABLE, send_signal_process, send_signal_thread, clear_proc_shm};
 
 pub fn do_exit(exit_code: i32, group_exit: bool) -> ! {
     let curr = current();
@@ -21,6 +21,8 @@ pub fn do_exit(exit_code: i32, group_exit: bool) -> ! {
     info!("{:?} exit with code: {}", thread, exit_code);
     let process = thread.process();
     if thread.exit(exit_code) {
+        clear_proc_shm(process.pid());
+        
         process.exit();
         if let Some(parent) = process.parent() {
             send_signal_process(&parent, SignalInfo::new(SIGCHLD, SI_KERNEL));
