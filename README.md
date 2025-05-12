@@ -91,7 +91,7 @@ export PATH=`pwd`/x86_64-linux-musl-cross/bin:`pwd`/aarch64-linux-musl-cross/bin
 make ARCH=riscv64 AX_TESTCASE=libc user_apps
 # When running on a new architecture, you need to generate the configuration file again.
 make ARCH=riscv64 defconfig
-make ARCH=riscv64 AX_TESTCASE=libc BLK=y NET=y ACCEL=n run LOG=info
+make ARCH=riscv64 AX_TESTCASE=libc BLK=y NET=y ACCEL=n run
 
 
 

@@ -1,34 +1,29 @@
-use core::iter::Map;
-
 use alloc::vec;
 use alloc::vec::Vec;
 use alloc::collections::btree_map::BTreeMap;
 
-use lazy_static::lazy_static;
 use axerrno::{LinuxError, LinuxResult};
 use axtask::{current, TaskExtRef};
-use linux_raw_sys::{general::SCHED_FLAG_UTIL_CLAMP_MIN, net::IPV6_CHECKSUM};
 use alloc::sync::Arc;
 use axsync::Mutex;
+use axerrno::AxError;
+use axprocess::Pid;
+use axhal::time::monotonic_time_nanos;
 
-use axerrno::{AxError, AxResult, ax_err};
 
-use axprocess::{Pid, Process, ProcessGroup, Session, Thread};
-
-use crate::imp::{ipc::shm, task::sys_getpid};
-
+use lazy_static::lazy_static;
+use linux_raw_sys::ctypes::{c_int, c_long, c_ushort};
 use memory_addr::{PhysAddr, VirtAddr, VirtAddrRange, PAGE_SIZE_4K};
 use page_table_entry::MappingFlags;
-use page_table_multiarch::{PageSize, PageTable64};
-use axhal::paging::{PageTable, PagingHandlerImpl};
+use page_table_multiarch::PageSize;
+use linux_raw_sys::general::*;
 
-// use crate::util::{BiBTreeMap, IPCID_ALLOCATOR};
 use crate::imp::ipc::{BiBTreeMap, IPCID_ALLOCATOR};
+use crate::ptr::{UserConstPtr, UserPtr, nullable};
 
 
 bitflags::bitflags! {
     /// flags for sys_shmat
-    ///
     /// See <https://github.com/bminor/glibc/blob/master/bits/shm.h>
     #[derive(Debug)]
     struct ShmAtFlags: u32 {
@@ -43,38 +38,71 @@ bitflags::bitflags! {
 }
 
 /// flags for sys_shmget, sys_msgget, sys_semget
-///
 /// See <https://github.com/bminor/glibc/blob/master/bits/ipc.h>
 pub const IPC_RMID: u32 = 0;
 pub const IPC_SET: u32 = 1;
 pub const IPC_STAT: u32 = 2;
 
-// #[repr(C)]
-// /// Data structure describing a shared memory segment.
-// /// see <https://github.com/bminor/glibc/blob/master/bits/shm.h>
-// pub struct CTypeIpcPerm {
-//     pub key: u32,                
-//     pub uid: u32,                
-//     pub gid: u32,               
-//     pub cuid: u32,
-//     pub cgid: u32, 
-//     pub mode: u16, 
-//     pub seq: u16,
-// }
+/// Data structure used to pass permission information to IPC operations.
+/// see <https://github.com/bminor/glibc/blob/master/bits/ipc.h>
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct IpcPerm {
+    pub key: __kernel_key_t,
+    pub uid: __kernel_uid_t,                
+    pub gid: __kernel_gid_t,         
+    pub cuid: __kernel_uid_t,
+    pub cgid: __kernel_gid_t, 
+    pub mode: __kernel_mode_t, 
+    pub seq: c_ushort,
+    pad: c_ushort,
+    unused0: c_long,
+    unused1: c_long,
+}
 
-// /// Data structure describing a shared memory segment.
-// /// see <https://github.com/bminor/glibc/blob/master/bits/shm.h>
-// #[repr(C)]
-// pub struct CTypeShmidDs {
-//     pub shm_perm: IpcPerm,        
-//     pub shm_segsz: usize,         
-//     pub shm_atime: SystemTime,    
-//     pub shm_dtime: SystemTime,    
-//     pub shm_ctime: SystemTime,    
-//     pub shm_cpid: RawFd,         
-//     pub shm_lpid: RawFd,         
-//     pub shm_nattch: u32,         
-// }
+/// Data structure describing a shared memory segment.
+/// see <https://github.com/bminor/glibc/blob/master/bits/shm.h>
+/// ? 为什么和 https://elixir.bootlin.com/linux/v6.14.5/source/include/uapi/linux/ipc.h#L10 对应不上？
+/// 已过时！https://elixir.bootlin.com/linux/v6.14.5/source/include/uapi/linux/shm.h#L28
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct ShmidDs {
+    pub shm_perm: IpcPerm,  /* operation permission struct */
+    pub shm_segsz: __kernel_size_t,   /* size of segment in bytes */
+    pub shm_atime: __kernel_time_t,     /* time of last shmat() */
+    pub shm_dtime: __kernel_time_t,     /* time of last shmdt() */
+    pub shm_ctime: __kernel_time_t,     /* time of last change by shmctl() */
+    pub shm_cpid: __kernel_pid_t,      /* pid of creator */
+    pub shm_lpid: __kernel_pid_t,      /* pid of last shmop */
+    pub shm_nattch: c_ushort,    /* number of current attaches */
+}
+
+impl ShmidDs {
+    pub fn new(key: i32, size: usize, mode: __kernel_mode_t, pid: __kernel_pid_t) -> Self {
+        error!("size = {}", size);
+        Self {
+            shm_perm: IpcPerm {
+                key,
+                uid: 0,
+                gid: 0,
+                cuid: 0,
+                cgid: 0,
+                mode,
+                seq: 0,
+                pad: 0,
+                unused0: 0,
+                unused1: 0,
+            },
+            shm_segsz: size as __kernel_size_t,
+            shm_atime: 0,
+            shm_dtime: 0,
+            shm_ctime: 0,
+            shm_cpid: pid,
+            shm_lpid: pid,
+            shm_nattch: 0,
+        }
+    }
+}
 
 /**
  * struct ShmInner is used to maintain the shared memory in kernel, similar to shmid_ds in Linux.
@@ -86,21 +114,29 @@ struct ShmInner {
     pub phys_pages: Vec<PhysAddr>, // shm page offset -> physical page
     pub rmid: bool, // remove on last detach
     pub mapping_flags: MappingFlags,
+    pub shmid_ds: ShmidDs,
 }
 
 impl ShmInner {
-    fn new(page_num: usize, mapping_flags: MappingFlags) -> Self {
+    fn new(key: i32, shmid: i32, size: usize, mapping_flags: MappingFlags, pid: Pid) -> Self {
         ShmInner {
-            shmid: {
-                let mut shmid_allocator = IPCID_ALLOCATOR.lock();
-                shmid_allocator.alloc()
-            },
-            page_num,
+            shmid,
+            page_num: memory_addr::align_up_4k(size) / PAGE_SIZE_4K,
             va_range: BTreeMap::new(),
             phys_pages: Vec::new(),
             rmid: false,
             mapping_flags,
+            shmid_ds: ShmidDs::new(key, size, mapping_flags.bits() as __kernel_mode_t, pid as __kernel_pid_t),
         }
+    }
+
+    pub fn try_update(&mut self, size: usize, mapping_flags: MappingFlags, pid: Pid) -> LinuxResult<isize> {
+        if size as __kernel_size_t != self.shmid_ds.shm_segsz 
+            || mapping_flags.bits() as __kernel_mode_t !=self.shmid_ds.shm_perm.mode {
+            return Err(LinuxError::EINVAL);
+        }
+        self.shmid_ds.shm_lpid = pid as i32;
+        Ok(self.shmid as isize)
     }
 
     pub fn has_mapped_to_phys(&self) -> bool {
@@ -124,12 +160,18 @@ impl ShmInner {
     fn attach_process(&mut self, pid: Pid, va_range: VirtAddrRange) {
         assert!(self.get_addr_range(pid).is_none());
         self.va_range.insert(pid, va_range);
+        self.shmid_ds.shm_nattch += 1;
+        self.shmid_ds.shm_lpid = pid as __kernel_pid_t;
+        self.shmid_ds.shm_atime = monotonic_time_nanos() as __kernel_time_t;
     }
-
+    
     // called by sys_shmdt
     fn detach_process(&mut self, pid: Pid) {
         assert!(self.get_addr_range(pid).is_some());
         self.va_range.remove(&pid);
+        self.shmid_ds.shm_nattch -= 1;
+        self.shmid_ds.shm_lpid = pid as __kernel_pid_t;
+        self.shmid_ds.shm_dtime = monotonic_time_nanos() as __kernel_time_t;
     }
 }
 
@@ -268,7 +310,7 @@ pub fn clear_proc_shm(pid: Pid) {
     let mut shm_manager = SHM_MANAGER.lock();
     if let Some(shmids) = shm_manager.get_shmids_by_pid(pid) {
         for shmid in shmids {
-            let mut shm_inner = shm_manager.get_inner_by_shmid(shmid).unwrap();
+            let shm_inner = shm_manager.get_inner_by_shmid(shmid).unwrap();
             let mut shm_inner = shm_inner.lock();
             shm_inner.detach_process(pid);
         }
@@ -277,14 +319,12 @@ pub fn clear_proc_shm(pid: Pid) {
 }
 
 pub fn sys_shmget(key: i32, size: usize, shmflg: usize) -> LinuxResult<isize> {
-    let size = memory_addr::align_up_4k(size);
-    let page_num = size / PAGE_SIZE_4K;
+    let page_num = memory_addr::align_up_4k(size) / PAGE_SIZE_4K;
     if page_num == 0 {
         return Err(LinuxError::EINVAL);
     }
 
-    let mut mapping_flags = MappingFlags::empty();
-    mapping_flags.insert(MappingFlags::USER);
+    let mut mapping_flags = MappingFlags::from_name("USER").unwrap();
     if shmflg & 0o400 != 0 {
         mapping_flags.insert(MappingFlags::READ);
     }
@@ -295,26 +335,22 @@ pub fn sys_shmget(key: i32, size: usize, shmflg: usize) -> LinuxResult<isize> {
         mapping_flags.insert(MappingFlags::EXECUTE);
     }
     
+    let cur_pid = current().task_ext().thread.process().pid();
     let mut shm_manager = SHM_MANAGER.lock();
     
     // This process has already created a shared memory segment with the same key
     if let Some(shmid) = shm_manager.get_shmid_by_key(key) {
-        let mut shm_inner = shm_manager.get_inner_by_shmid(shmid).ok_or(LinuxError::EINVAL)?;
+        let shm_inner = shm_manager.get_inner_by_shmid(shmid).ok_or(LinuxError::EINVAL)?;
         let mut shm_inner = shm_inner.lock();
-        if shm_inner.page_num != page_num || shm_inner.mapping_flags != mapping_flags {
-            return Err(LinuxError::EINVAL);
-        }
-        return Ok(shmid as isize);
+        return shm_inner.try_update(size, mapping_flags, cur_pid);
     }
 
     // Create a new shm_inner
+    let mut shmid_allocator = IPCID_ALLOCATOR.lock();
+    let shmid = shmid_allocator.alloc();
     let shm_inner = Arc::new(Mutex::new(
-        ShmInner::new(page_num, mapping_flags)
+        ShmInner::new(key, shmid,  size, mapping_flags, cur_pid)
     ));
-    let shmid = {
-        let shm_inner = shm_inner.lock();
-        shm_inner.shmid
-    };
     shm_manager.insert_key_shmid(key, shmid);
     shm_manager.insert_shmid_inner(shmid, shm_inner);
     
@@ -322,28 +358,23 @@ pub fn sys_shmget(key: i32, size: usize, shmflg: usize) -> LinuxResult<isize> {
 }
 
 pub fn sys_shmat(shmid: i32, addr: usize, shmflg: u32) -> LinuxResult<isize> {
-    error!("sys_shmat: shmid = {}", shmid);
-    
     let shm_inner = {
         let shm_manager = SHM_MANAGER.lock();
         shm_manager.get_inner_by_shmid(shmid).unwrap()
     };
     let mut shm_inner = shm_inner.lock();
-
-    warn!("mapping_flags: {:#x?}", shm_inner.mapping_flags);
-
     let mut mapping_flags = shm_inner.mapping_flags.clone();
     let shm_flg = ShmAtFlags::from_bits_truncate(shmflg);
 
     if shm_flg.contains(ShmAtFlags::SHM_RDONLY) {
-        // mapping_flags.remove(MappingFlags::WRITE);
+        mapping_flags.remove(MappingFlags::WRITE);
     }
 
     // TODO: solve shmflg: SHM_RND and SHM_REMAP
 
     let curr = current();
+    let cur_pid = curr.task_ext().thread.process().pid();
     let process_data = curr.task_ext().process_data();
-    let cur_pid = current().task_ext().thread.process().pid();
     let mut aspace = process_data.aspace.lock();
 
     let start_aligned = memory_addr::align_down_4k(addr);
@@ -368,21 +399,17 @@ pub fn sys_shmat(shmid: i32, addr: usize, shmflg: u32) -> LinuxResult<isize> {
 
     let mut shm_manager = SHM_MANAGER.lock();
     shm_manager.insert_shmid_vaddr(cur_pid, shm_inner.shmid, start_addr);
-    shm_inner.attach_process(cur_pid, va_range);
-
-    warn!("[SYS_SHMGET]: Process {} alloc shm addr: {:#x}, size: {}, mapping_flags: {:#x?}", 
+    debug!("[SYS_SHMGET]: Process {} alloc shm addr: {:#x}, size: {}, mapping_flags: {:#x?}", 
                         cur_pid, start_addr.as_usize(), length, mapping_flags);
-
-    let mapping_flags = MappingFlags::all();
                         
     // map the virtual address range to the physical address
     if !shm_inner.has_mapped_to_phys() {
         // This is the first process to attach the shared memory
+
         let result = aspace.map_alloc(
             start_addr,
             length,
             mapping_flags,
-            // MappingFlags::all(),
             true,
         );
 
@@ -400,14 +427,13 @@ pub fn sys_shmat(shmid: i32, addr: usize, shmflg: u32) -> LinuxResult<isize> {
         for i in 0..shm_inner.page_num {
             let proc_page_table = aspace.page_table();
             let curr_vaddr = start_addr + i * PAGE_SIZE_4K;
-            let (mut paddr, _, _) = proc_page_table.query(curr_vaddr).map_err(|_| AxError::BadAddress)?;
+            let (paddr, _, _) = proc_page_table.query(curr_vaddr).map_err(|_| AxError::BadAddress)?;
             tmp_page_table[i] = paddr;
             info!("proc[{}]  vaddr[{:#x}] paddr[{:#x}] flags[{:#x}]", cur_pid, curr_vaddr.as_usize(), paddr.as_usize(), mapping_flags);
         }
         shm_inner.map_to_phys(tmp_page_table);
     } else {
         // Another proccess has attached the shared memory
-        error!("branch 2");
 
         for i in 0..shm_inner.page_num {
             let proc_page_table = aspace.page_table_mut();
@@ -428,20 +454,32 @@ pub fn sys_shmat(shmid: i32, addr: usize, shmflg: u32) -> LinuxResult<isize> {
         }
     }
 
-    // axhal::arch::flush_tlb(None);
+    shm_inner.attach_process(cur_pid, va_range);
     Ok(start_addr.as_usize() as isize)
 }
 
-pub fn sys_shmctl(shmid: i32, cmd: u32, buf: usize) -> LinuxResult<isize> {
+pub fn sys_shmctl(shmid: i32, cmd: u32, buf: UserPtr<ShmidDs>) -> LinuxResult<isize> {
     let shm_inner = {
         let shm_manager = SHM_MANAGER.lock();
         shm_manager.get_inner_by_shmid(shmid).ok_or(LinuxError::EINVAL)?
     };
     let mut shm_inner = shm_inner.lock();
 
-    if cmd == IPC_SET || cmd == IPC_STAT {
-        return Err(LinuxError::EINVAL);
+    if cmd == IPC_SET {
+        let shmid_ds = buf.get_as_mut()?;
+        shm_inner.shmid_ds = *shmid_ds;
+        error!("IPC SET segsz = {}", shmid_ds.shm_segsz);
     }
+    
+    if cmd == IPC_STAT {
+        let shmid_ds = buf.get_as_mut()?;
+        *shmid_ds = shm_inner.shmid_ds;
+        let tmp = shmid_ds.shm_perm;
+        error!("ctl perm(kernel): {}, {}, {}, {}, {}", tmp.uid, tmp.gid, tmp.cuid, tmp.cgid, tmp.mode);
+        error!("ctl stat size = {}", shm_inner.shmid_ds.shm_segsz);
+    }
+
+    shm_inner.shmid_ds.shm_ctime = monotonic_time_nanos() as __kernel_time_t;
 
     if cmd == IPC_STAT {
         shm_inner.rmid = true;
@@ -462,7 +500,6 @@ pub fn sys_shmdt(shmaddr: usize) -> LinuxResult<isize> {
         shm_manager.get_shmid_by_vaddr(pid, shmaddr)
             .ok_or(LinuxError::EINVAL)?
     };
-    warn!("sys_shmdt: shmid = {}", shmid);
     
     let shm_inner = {
         let shm_manager = SHM_MANAGER.lock();

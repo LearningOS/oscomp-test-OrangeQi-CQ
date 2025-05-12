@@ -176,31 +176,10 @@ fn handle_syscall(tf: &mut TrapFrame, syscall_num: usize) -> isize {
         Sysno::rt_sigreturn => sys_rt_sigreturn(tf),
         Sysno::kill => sys_kill(tf.arg0() as _, tf.arg1() as _),
         Sysno::tgkill => sys_tgkill(tf.arg0() as _, tf.arg1() as _, tf.arg2() as _),
-
-
-
-        Sysno::shmget => sys_shmget(
-            tf.arg0() as _,
-            tf.arg1() as _,
-            tf.arg2() as _,
-        ),
-
-        Sysno::shmat => sys_shmat(
-            tf.arg0() as _,
-            tf.arg1() as _,
-            tf.arg2() as _,
-        ),
-
-        Sysno::shmctl => sys_shmctl(
-            tf.arg0() as _,
-            tf.arg1() as _,
-            tf.arg2() as _,
-        ),
-        
-        Sysno::shmdt => sys_shmdt(
-            tf.arg0() as _,
-        ),
-        
+        Sysno::shmget => sys_shmget(tf.arg0() as _, tf.arg1() as _, tf.arg2() as _),
+        Sysno::shmat => sys_shmat(tf.arg0() as _, tf.arg1() as _, tf.arg2() as _),
+        Sysno::shmctl => sys_shmctl(tf.arg0() as _, tf.arg1() as _, tf.arg2().into()),
+        Sysno::shmdt => sys_shmdt(tf.arg0() as _,),
         
         Sysno::futex => {
             warn!("preventing pthread from blocking testing");
