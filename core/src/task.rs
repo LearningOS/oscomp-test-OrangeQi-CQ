@@ -1,8 +1,10 @@
+//! User task management.
+
 use core::{
     alloc::Layout,
-    cell::{Cell, RefCell},
-    hint::black_box,
+    cell::RefCell,
     sync::atomic::{AtomicUsize, Ordering},
+    time::Duration,
 };
 
 use alloc::{
@@ -19,24 +21,31 @@ use axmm::{AddrSpace, kernel_aspace};
 use axns::{AxNamespace, AxNamespaceIf};
 use axprocess::{Pid, Process, ProcessGroup, Session, Thread};
 use axsignal::{
-    PendingSignals,
-    ctypes::{SignalAction, SignalSet},
+    Signo,
+    api::{ProcessSignalManager, SignalActions, ThreadSignalManager},
 };
-use axsync::{Mutex, spin::SpinNoIrq};
+use axsync::{Mutex, RawMutex};
 use axtask::{TaskExtRef, TaskInner, WaitQueue, current};
 use memory_addr::VirtAddrRange;
 use spin::{Once, RwLock};
 use weak_map::WeakMap;
 
-use crate::{resources::Rlimits, time::TimeStat};
+use crate::time::TimeStat;
 
-pub fn new_user_task(name: &str) -> TaskInner {
+/// Create a new user task.
+pub fn new_user_task(
+    name: &str,
+    uctx: UspaceContext,
+    set_child_tid: Option<&'static mut Pid>,
+) -> TaskInner {
     TaskInner::new(
-        || {
+        move || {
             let curr = axtask::current();
+            if let Some(tid) = set_child_tid {
+                *tid = curr.id().as_u64() as Pid;
+            }
+
             let kstack_top = curr.kernel_stack_top().unwrap();
-            let uctx = curr.task_ext().uctx.take().unwrap();
-            black_box(&uctx);
             info!(
                 "Enter user space: entry={:#x}, ustack={:#x}, kstack={:#x}",
                 uctx.ip(),
@@ -52,8 +61,6 @@ pub fn new_user_task(name: &str) -> TaskInner {
 
 /// Task extended data for the monolithic kernel.
 pub struct TaskExt {
-    /// The user space context.
-    pub uctx: Cell<Option<UspaceContext>>,
     /// The time statistics
     pub time: RefCell<TimeStat>,
     /// The thread
@@ -61,9 +68,9 @@ pub struct TaskExt {
 }
 
 impl TaskExt {
-    pub fn new(uctx: UspaceContext, thread: Arc<Thread>) -> Self {
+    /// Create a new [`TaskExt`].
+    pub fn new(thread: Arc<Thread>) -> Self {
         Self {
-            uctx: Cell::new(Some(uctx)),
             time: RefCell::new(TimeStat::new()),
             thread,
         }
@@ -81,10 +88,12 @@ impl TaskExt {
         self.time.borrow().output()
     }
 
+    /// Get the [`ThreadData`] associated with this task.
     pub fn thread_data(&self) -> &ThreadData {
         self.thread.data().unwrap()
     }
 
+    /// Get the [`ProcessData`] associated with this task.
     pub fn process_data(&self) -> &ProcessData {
         self.thread.process().data().unwrap()
     }
@@ -92,6 +101,7 @@ impl TaskExt {
 
 axtask::def_task_ext!(TaskExt);
 
+/// Update the time statistics to reflect a switch from kernel mode to user mode.
 pub fn time_stat_from_kernel_to_user() {
     let curr_task = current();
     curr_task
@@ -99,6 +109,7 @@ pub fn time_stat_from_kernel_to_user() {
         .time_stat_from_kernel_to_user(monotonic_time_nanos() as usize);
 }
 
+/// Update the time statistics to reflect a switch from user mode to kernel mode.
 pub fn time_stat_from_user_to_kernel() {
     let curr_task = current();
     curr_task
@@ -106,6 +117,7 @@ pub fn time_stat_from_user_to_kernel() {
         .time_stat_from_user_to_kernel(monotonic_time_nanos() as usize);
 }
 
+/// Get the time statistics for the current task.
 pub fn time_stat_output() -> (usize, usize, usize, usize) {
     let curr_task = current();
     let (utime_ns, stime_ns) = curr_task.task_ext().time_stat_output();
@@ -117,6 +129,29 @@ pub fn time_stat_output() -> (usize, usize, usize, usize) {
     )
 }
 
+#[doc(hidden)]
+pub struct WaitQueueWrapper(WaitQueue);
+impl Default for WaitQueueWrapper {
+    fn default() -> Self {
+        Self(WaitQueue::new())
+    }
+}
+impl axsignal::api::WaitQueue for WaitQueueWrapper {
+    fn wait_timeout(&self, timeout: Option<Duration>) -> bool {
+        if let Some(timeout) = timeout {
+            self.0.wait_timeout(timeout)
+        } else {
+            self.0.wait();
+            true
+        }
+    }
+
+    fn notify_one(&self) -> bool {
+        self.0.notify_one(false)
+    }
+}
+
+/// Extended data for [`Thread`].
 pub struct ThreadData {
     /// The clear thread tid field
     ///
@@ -125,32 +160,34 @@ pub struct ThreadData {
     /// When the thread exits, the kernel clears the word at this address if it is not NULL.
     pub clear_child_tid: AtomicUsize,
 
-    /// The pending signals
-    pub pending: SpinNoIrq<PendingSignals>,
-    /// The set of signals currently blocked from delivery.
-    pub blocked: Mutex<SignalSet>,
+    /// The thread-level signal manager
+    pub signal: ThreadSignalManager<RawMutex, WaitQueueWrapper>,
 }
 
 impl ThreadData {
+    /// Create a new [`ThreadData`].
     #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
+    pub fn new(proc: &ProcessData) -> Self {
         Self {
             clear_child_tid: AtomicUsize::new(0),
-            pending: SpinNoIrq::new(PendingSignals::new()),
-            blocked: Mutex::default(),
+
+            signal: ThreadSignalManager::new(proc.signal.clone()),
         }
     }
 
+    /// Get the clear child tid field.
     pub fn clear_child_tid(&self) -> usize {
         self.clear_child_tid.load(Ordering::Relaxed)
     }
 
+    /// Set the clear child tid field.
     pub fn set_clear_child_tid(&self, clear_child_tid: usize) {
         self.clear_child_tid
             .store(clear_child_tid, Ordering::Relaxed);
     }
 }
 
+/// Extended data for [`Process`].
 pub struct ProcessData {
     /// The executable path
     pub exe_path: RwLock<String>,
@@ -163,24 +200,23 @@ pub struct ProcessData {
     /// The user heap top
     heap_top: AtomicUsize,
 
-    /// The resource limits
-    pub rlim: RwLock<Rlimits>,
-
-    /// The process-level shared pending signals
-    pub pending: SpinNoIrq<PendingSignals>,
-    /// The signal actions
-    pub signal_actions: Mutex<[SignalAction; 32]>,
-    /// The wait queue for signal. Used by `rt_sigtimedwait`, etc.
-    ///
-    /// Note that this is shared by all threads in the process, so false wakeups
-    /// may occur.
-    pub signal_wq: WaitQueue,
-    /// The wait queue for child exits.
+    /// The child exit wait queue
     pub child_exit_wq: WaitQueue,
+    /// The exit signal of the thread
+    pub exit_signal: Option<Signo>,
+
+    /// The process signal manager
+    pub signal: Arc<ProcessSignalManager<RawMutex, WaitQueueWrapper>>,
 }
 
 impl ProcessData {
-    pub fn new(exe_path: String, aspace: Arc<Mutex<AddrSpace>>) -> Self {
+    /// Create a new [`ProcessData`].
+    pub fn new(
+        exe_path: String,
+        aspace: Arc<Mutex<AddrSpace>>,
+        signal_actions: Arc<Mutex<SignalActions>>,
+        exit_signal: Option<Signo>,
+    ) -> Self {
         Self {
             exe_path: RwLock::new(exe_path),
             aspace,
@@ -188,29 +224,40 @@ impl ProcessData {
             heap_bottom: AtomicUsize::new(axconfig::plat::USER_HEAP_BASE),
             heap_top: AtomicUsize::new(axconfig::plat::USER_HEAP_BASE),
 
-            rlim: RwLock::default(),
-
-            pending: SpinNoIrq::new(PendingSignals::new()),
-            signal_actions: Mutex::default(),
-            signal_wq: WaitQueue::new(),
             child_exit_wq: WaitQueue::new(),
+            exit_signal,
+
+            signal: Arc::new(ProcessSignalManager::new(
+                signal_actions,
+                axconfig::plat::SIGNAL_TRAMPOLINE,
+            )),
         }
     }
 
+    /// Get the bottom address of the user heap.
     pub fn get_heap_bottom(&self) -> usize {
         self.heap_bottom.load(Ordering::Acquire)
     }
 
+    /// Set the bottom address of the user heap.
     pub fn set_heap_bottom(&self, bottom: usize) {
         self.heap_bottom.store(bottom, Ordering::Release)
     }
 
+    /// Get the top address of the user heap.
     pub fn get_heap_top(&self) -> usize {
         self.heap_top.load(Ordering::Acquire)
     }
 
+    /// Set the top address of the user heap.
     pub fn set_heap_top(&self, top: usize) {
         self.heap_top.store(top, Ordering::Release)
+    }
+
+    /// Linux manual: A "clone" child is one which delivers no signal, or a
+    /// signal other than SIGCHLD to its parent upon termination.
+    pub fn is_clone_child(&self) -> bool {
+        self.exit_signal != Some(Signo::SIGCHLD)
     }
 }
 
@@ -254,6 +301,8 @@ static PROCESS_TABLE: RwLock<WeakMap<Pid, Weak<Process>>> = RwLock::new(WeakMap:
 static PROCESS_GROUP_TABLE: RwLock<WeakMap<Pid, Weak<ProcessGroup>>> = RwLock::new(WeakMap::new());
 static SESSION_TABLE: RwLock<WeakMap<Pid, Weak<Session>>> = RwLock::new(WeakMap::new());
 
+/// Add the thread and possibly its process, process group and session to the
+/// corresponding tables.
 pub fn add_thread_to_table(thread: &Arc<Thread>) {
     let mut thread_table = THREAD_TABLE.write();
     thread_table.insert(thread.tid(), thread);
@@ -280,22 +329,27 @@ pub fn add_thread_to_table(thread: &Arc<Thread>) {
     session_table.insert(session.sid(), &session);
 }
 
+/// Lists all processes.
 pub fn processes() -> Vec<Arc<Process>> {
     PROCESS_TABLE.read().values().collect()
 }
 
+/// Finds the thread with the given TID.
 pub fn get_thread(tid: Pid) -> LinuxResult<Arc<Thread>> {
     THREAD_TABLE.read().get(&tid).ok_or(LinuxError::ESRCH)
 }
+/// Finds the process with the given PID.
 pub fn get_process(pid: Pid) -> LinuxResult<Arc<Process>> {
     PROCESS_TABLE.read().get(&pid).ok_or(LinuxError::ESRCH)
 }
+/// Finds the process group with the given PGID.
 pub fn get_process_group(pgid: Pid) -> LinuxResult<Arc<ProcessGroup>> {
     PROCESS_GROUP_TABLE
         .read()
         .get(&pgid)
         .ok_or(LinuxError::ESRCH)
 }
+/// Finds the session with the given SID.
 pub fn get_session(sid: Pid) -> LinuxResult<Arc<Session>> {
     SESSION_TABLE.read().get(&sid).ok_or(LinuxError::ESRCH)
 }

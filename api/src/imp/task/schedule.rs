@@ -1,47 +1,15 @@
-use axerrno::{LinuxError, LinuxResult};
-use linux_raw_sys::general::timespec;
+use arceos_posix_api as api;
+use axerrno::LinuxResult;
 
-use crate::{
-    ptr::{UserConstPtr, UserPtr, nullable},
-    time::{timespec_to_timevalue, timevalue_to_timespec},
-};
+use crate::ptr::{PtrWrapper, UserConstPtr, UserPtr};
 
 pub fn sys_sched_yield() -> LinuxResult<isize> {
-    axtask::yield_now();
-    Ok(0)
+    Ok(api::sys_sched_yield() as _)
 }
 
-/// Sleep some nanoseconds
-///
-/// TODO: should be woken by signals, and set errno
-pub fn sys_nanosleep(req: UserConstPtr<timespec>, rem: UserPtr<timespec>) -> LinuxResult<isize> {
-    let req = req.get_as_ref()?;
-
-    if req.tv_nsec < 0 || req.tv_nsec > 999_999_999 || req.tv_sec < 0 {
-        return Err(LinuxError::EINVAL);
-    }
-
-    let dur = timespec_to_timevalue(*req);
-    debug!("sys_nanosleep <= {:?}", dur);
-
-    let now = axhal::time::monotonic_time();
-
-    // FIXME: this blocks for single-core, probably irq is disabled by a spin lock
-    if axtask::current().name() != "busybox" {
-        axtask::sleep(dur);
-    }
-
-    let after = axhal::time::monotonic_time();
-    let actual = after - now;
-
-    if let Some(diff) = dur.checked_sub(actual) {
-        if let Some(rem) = nullable!(rem.get_as_mut())? {
-            *rem = timevalue_to_timespec(diff);
-        }
-        // FIXME: hack
-        Ok(0)
-        // Err(LinuxError::EINTR)
-    } else {
-        Ok(0)
-    }
+pub fn sys_nanosleep(
+    req: UserConstPtr<api::ctypes::timespec>,
+    rem: UserPtr<api::ctypes::timespec>,
+) -> LinuxResult<isize> {
+    unsafe { Ok(api::sys_nanosleep(req.get()?, rem.get()?) as _) }
 }

@@ -1,45 +1,48 @@
-use axsignal::ctypes::SignalInfo;
+use axprocess::Pid;
+use axsignal::{SignalInfo, Signo};
 use axtask::{TaskExtRef, current};
-use linux_raw_sys::general::{SI_KERNEL, SIGCHLD, SIGKILL};
+use linux_raw_sys::general::SI_KERNEL;
 use starry_core::task::ProcessData;
 
-use crate::{fd::FD_TABLE, send_signal_process, send_signal_thread, clear_proc_shm};
+use crate::{
+    ptr::{PtrWrapper, UserPtr},
+    send_signal_process, send_signal_thread, clear_proc_shm
+};
 
 pub fn do_exit(exit_code: i32, group_exit: bool) -> ! {
     let curr = current();
-    let clear_child_tid = curr.task_ext().thread_data().clear_child_tid() as *mut i32;
-    if !clear_child_tid.is_null() {
-        // TODO: check whether the address is valid
-        unsafe {
-            // TODO: Encapsulate all operations that access user-mode memory into a unified function
-            *(clear_child_tid) = 0;
-        }
+    let curr_ext = curr.task_ext();
+
+    let thread = &curr_ext.thread;
+    info!("{:?} exit with code: {}", thread, exit_code);
+
+    let clear_child_tid = UserPtr::<Pid>::from(curr_ext.thread_data().clear_child_tid());
+    if let Ok(clear_tid) = clear_child_tid.get() {
+        unsafe { clear_tid.write(0) };
         // TODO: wake up threads, which are blocked by futex, and waiting for the address pointed by clear_child_tid
     }
 
-    let thread = &curr.task_ext().thread;
-    info!("{:?} exit with code: {}", thread, exit_code);
     let process = thread.process();
     if thread.exit(exit_code) {
-        clear_proc_shm(process.pid());
-        
         process.exit();
         if let Some(parent) = process.parent() {
-            send_signal_process(&parent, SignalInfo::new(SIGCHLD, SI_KERNEL));
+            if let Some(signo) = process.data::<ProcessData>().and_then(|it| it.exit_signal) {
+                let _ = send_signal_process(&parent, SignalInfo::new(signo, SI_KERNEL as _));
+            }
             if let Some(data) = parent.data::<ProcessData>() {
                 data.child_exit_wq.notify_all(false)
             }
         }
 
+        clear_proc_shm(process.pid());
+        process.exit();
         // TODO: clear namespace resources
-        // FIXME: axns should drop all the resources
-        FD_TABLE.clear();
     }
-    if group_exit {
+    if group_exit && !process.is_group_exited() {
         process.group_exit();
-        let sig = SignalInfo::new(SIGKILL, SI_KERNEL);
+        let sig = SignalInfo::new(Signo::SIGKILL, SI_KERNEL as _);
         for thr in process.threads() {
-            send_signal_thread(&thr, sig.clone());
+            let _ = send_signal_thread(&thr, sig.clone());
         }
     }
     axtask::exit(exit_code)

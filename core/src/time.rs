@@ -1,28 +1,16 @@
-#[repr(C)]
-pub struct Tms {
-    /// 进程用户态执行时间，单位为us
-    pub tms_utime: usize,
-    /// 进程内核态执行时间，单位为us
-    pub tms_stime: usize,
-    /// 子进程用户态执行时间和，单位为us
-    pub tms_cutime: usize,
-    /// 子进程内核态执行时间和，单位为us
-    pub tms_cstime: usize,
-}
-
 numeric_enum_macro::numeric_enum! {
     #[repr(i32)]
     #[allow(non_camel_case_types)]
     #[derive(Eq, PartialEq, Debug, Clone, Copy)]
     pub enum TimerType {
-        /// 表示目前没有任何计时器(不在linux规范中，是os自己规定的)
-        NONE = -1,
-        /// 统计系统实际运行时间
-        REAL = 0,
-        /// 统计用户态运行时间
-        VIRTUAL = 1,
-        /// 统计进程的所有用户态/内核态运行时间
-        PROF = 2,
+    /// 表示目前没有任何计时器(不在linux规范中，是os自己规定的)
+    NONE = -1,
+    /// 统计系统实际运行时间
+    REAL = 0,
+    /// 统计用户态运行时间
+    VIRTUAL = 1,
+    /// 统计进程的所有用户态/内核态运行时间
+    PROF = 2,
     }
 }
 

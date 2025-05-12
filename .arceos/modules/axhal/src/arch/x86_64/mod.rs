@@ -5,6 +5,9 @@ mod idt;
 #[cfg(feature = "uspace")]
 mod syscall;
 
+#[cfg(feature = "uspace")]
+mod tls;
+
 #[cfg(target_os = "none")]
 mod trap;
 
@@ -133,5 +136,3 @@ pub fn cpu_init() {
     #[cfg(feature = "uspace")]
     init_syscall();
 }
-
-core::arch::global_asm!(include_str!("signal.S"));

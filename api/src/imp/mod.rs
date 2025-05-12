@@ -1,10 +1,9 @@
 mod fs;
 mod mm;
-mod resources;
 mod signal;
 mod sys;
 mod task;
-mod time;
 mod ipc;
+mod utils;
 
-pub use self::{fs::*, mm::*, resources::*, signal::*, sys::*, task::*, time::*, ipc::*};
+pub use self::{fs::*, mm::*, signal::*, sys::*, task::*, ipc::*, utils::*};

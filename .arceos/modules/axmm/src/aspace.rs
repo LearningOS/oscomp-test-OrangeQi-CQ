@@ -38,7 +38,8 @@ impl AddrSpace {
     pub const fn page_table(&self) -> &PageTable {
         &self.pt
     }
-
+    
+    /// Returns the mut reference to the inner page table.
     pub fn page_table_mut(&mut self) -> &mut PageTable {
         &mut self.pt
     }
@@ -372,25 +373,8 @@ impl AddrSpace {
     /// fault).
     pub fn handle_page_fault(&mut self, vaddr: VirtAddr, access_flags: MappingFlags) -> bool {
         if !self.va_range.contains(vaddr) {
-            error!("not contains vaddr");
             return false;
         }
-
-        error!("hendle page fault");
-
-        let result = self.pt.query(vaddr);
-        match result {
-            Ok((paddr, x, y))=> {
-                error!(
-                    "Page fault at {:#x}, access_flags: {:#x?}, paddr: {:#x}",
-                    vaddr, access_flags, paddr
-                );
-            }
-            Err(e) => {error!("Page fault at {:#x}, access_flags: {:#x?}, error: {:?}", vaddr, access_flags, e);},
-        }
-
-        // let (mut paddr, _, _) = self.pt.query(vaddr).map_err(|_| AxError::BadAddress).;
-        
         if let Some(area) = self.areas.find(vaddr) {
             let orig_flags = area.flags();
             if orig_flags.contains(access_flags) {

@@ -11,8 +11,6 @@ SECTIONS
     .text : ALIGN(4K) {
         _stext = .;
         *(.text.boot)
-        . = ALIGN(4K);
-        *(.text.signal_trampoline)
         *(.text .text.*)
         . = ALIGN(4K);
         _etext = .;

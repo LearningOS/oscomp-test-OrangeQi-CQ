@@ -19,12 +19,11 @@ use page_table_multiarch::PageSize;
 use linux_raw_sys::general::*;
 
 use crate::imp::ipc::{BiBTreeMap, IPCID_ALLOCATOR};
-use crate::ptr::{UserConstPtr, UserPtr, nullable};
+use crate::ptr::{PtrWrapper, UserConstPtr, UserPtr};
 
 
 bitflags::bitflags! {
     /// flags for sys_shmat
-    /// See <https://github.com/bminor/glibc/blob/master/bits/shm.h>
     #[derive(Debug)]
     struct ShmAtFlags: u32 {
         /* attach read-only else read-write */
@@ -33,18 +32,16 @@ bitflags::bitflags! {
         const SHM_RND = 0o20000;
         /* take-over region on attach */
         const SHM_REMAP = 0o40000;
-        
     }
 }
 
 /// flags for sys_shmget, sys_msgget, sys_semget
-/// See <https://github.com/bminor/glibc/blob/master/bits/ipc.h>
+pub const IPC_PRIVATE: i32 = 0;
 pub const IPC_RMID: u32 = 0;
 pub const IPC_SET: u32 = 1;
 pub const IPC_STAT: u32 = 2;
 
 /// Data structure used to pass permission information to IPC operations.
-/// see <https://github.com/bminor/glibc/blob/master/bits/ipc.h>
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct IpcPerm {
@@ -55,15 +52,12 @@ pub struct IpcPerm {
     pub cgid: __kernel_gid_t, 
     pub mode: __kernel_mode_t, 
     pub seq: c_ushort,
-    pad: c_ushort,
-    unused0: c_long,
-    unused1: c_long,
+    pad: c_ushort,      // for memory align
+    unused0: c_long,    // for memory align
+    unused1: c_long,    // for memory align
 }
 
 /// Data structure describing a shared memory segment.
-/// see <https://github.com/bminor/glibc/blob/master/bits/shm.h>
-/// ? 为什么和 https://elixir.bootlin.com/linux/v6.14.5/source/include/uapi/linux/ipc.h#L10 对应不上？
-/// 已过时！https://elixir.bootlin.com/linux/v6.14.5/source/include/uapi/linux/shm.h#L28
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct ShmidDs {
@@ -79,7 +73,6 @@ pub struct ShmidDs {
 
 impl ShmidDs {
     pub fn new(key: i32, size: usize, mode: __kernel_mode_t, pid: __kernel_pid_t) -> Self {
-        error!("size = {}", size);
         Self {
             shm_perm: IpcPerm {
                 key,
@@ -105,16 +98,16 @@ impl ShmidDs {
 }
 
 /**
- * struct ShmInner is used to maintain the shared memory in kernel, similar to shmid_ds in Linux.
+ * This struct is used to maintain the shmem in kernel.
  */
 struct ShmInner {
     pub shmid: i32,
     pub page_num: usize,
-    pub va_range: BTreeMap<Pid, VirtAddrRange>, // there can be at most one va_range for each process?
-    pub phys_pages: Vec<PhysAddr>, // shm page offset -> physical page
-    pub rmid: bool, // remove on last detach
+    pub va_range: BTreeMap<Pid, VirtAddrRange>,  // In each process, this shm is mapped into different virt addr range
+    pub phys_pages: Vec<PhysAddr>,  // shm page num -> physical page
+    pub rmid: bool,                 // whether remove on last detach, see shm_ctl
     pub mapping_flags: MappingFlags,
-    pub shmid_ds: ShmidDs,
+    pub shmid_ds: ShmidDs,          // c type struct, used in shm_ctl
 }
 
 impl ShmInner {
@@ -177,14 +170,13 @@ impl ShmInner {
 
 
 /**
- * struct ShmManager is used to maintain the relationship between the shared memory segments and processes.
- * 
- * note: this struct do not modify the struct ShmInner, but only maintain the mapping.
+ * This struct is used to manage the relationship between the shmem and processes.
+ * note: this struct do not modify the struct ShmInner, but only manage the mapping.
  */
 struct ShmManager {
-    key_shmid: BiBTreeMap<i32, i32>, // key <-> shm_id
-    shmid_inner: BTreeMap<i32, Arc<Mutex<ShmInner>>>, // shm_id -> shm_inner
-    pid_shmid_vaddr: BTreeMap<Pid, BiBTreeMap<i32, VirtAddr>>, // in specific process, shm_id <-> shm_start_addr
+    key_shmid: BiBTreeMap<i32, i32>,                            // key <-> shm_id
+    shmid_inner: BTreeMap<i32, Arc<Mutex<ShmInner>>>,           // shm_id -> shm_inner
+    pid_shmid_vaddr: BTreeMap<Pid, BiBTreeMap<i32, VirtAddr>>,  // in specific process, shm_id <-> shm_start_addr
 }
 
 impl ShmManager {
@@ -221,7 +213,7 @@ impl ShmManager {
         }
         let mut res = Vec::new();
         for key in map.unwrap().forward.keys() {
-            res.push(*key); // 直接复制 key（假设 key 是 Copy 类型）
+            res.push(*key); 
         }
         Some(res)
     }
@@ -256,23 +248,21 @@ impl ShmManager {
     /**
      * Garbage collection for shared memory:
      * 1. when the process call sys_shmdt, delete everything related to shmaddr, 
-     *    including the bidirectional map 'shmid_vaddr';
+     *    including map 'shmid_vaddr';
      * 2. when the last process detach the shared memory and this shared memory 
      *    was specified with IPC_RMID, delete everything related to this shared memory, 
-     *    including all the 3 bidirectional maps;
+     *    including all the 3 maps;
      * 3. when a process exit, delete everything related to this process, including 2 
-     *    bidirectional maps: 'shmid_vaddr' and 'shmid_inner';
+     *    maps: 'shmid_vaddr' and 'shmid_inner';
      * 
      * 
-     * Besides, the process_data maintains information about the shared memory it has, 
-     *    in order to drop the shared memory when the process exits.
      * The attach between the process and the shared memory occurs in sys_shmat,
      *   and the detach occurs in sys_shmdt, or when the process exits.
      */
 
     /**
-     * note: all the below delete functions only delete the mapping between the shm_id and the shm_inner,
-     *    and the shm_inner is not deleted or modifyed.
+     * Note: all the below delete functions only delete the mapping between the shm_id and the shm_inner,
+     *    but the shm_inner is not deleted or modifyed!
      */
     
     // called by shmdt
@@ -305,7 +295,7 @@ lazy_static! {
     static ref SHM_MANAGER: Mutex<ShmManager> = Mutex::new(ShmManager::new());
 }
 
-// called when a process exit
+// called when a process exit, detach all the shmem related
 pub fn clear_proc_shm(pid: Pid) {
     let mut shm_manager = SHM_MANAGER.lock();
     if let Some(shmids) = shm_manager.get_shmids_by_pid(pid) {
@@ -313,6 +303,10 @@ pub fn clear_proc_shm(pid: Pid) {
             let shm_inner = shm_manager.get_inner_by_shmid(shmid).unwrap();
             let mut shm_inner = shm_inner.lock();
             shm_inner.detach_process(pid);
+
+            if shm_inner.rmid && shm_inner.attach_count() == 0 {
+                shm_manager.remove_shmid(shmid);
+            }
         }
     }
     shm_manager.remove_pid(pid);
@@ -338,11 +332,13 @@ pub fn sys_shmget(key: i32, size: usize, shmflg: usize) -> LinuxResult<isize> {
     let cur_pid = current().task_ext().thread.process().pid();
     let mut shm_manager = SHM_MANAGER.lock();
     
-    // This process has already created a shared memory segment with the same key
-    if let Some(shmid) = shm_manager.get_shmid_by_key(key) {
-        let shm_inner = shm_manager.get_inner_by_shmid(shmid).ok_or(LinuxError::EINVAL)?;
-        let mut shm_inner = shm_inner.lock();
-        return shm_inner.try_update(size, mapping_flags, cur_pid);
+    if key != IPC_PRIVATE {
+        // This process has already created a shared memory segment with the same key
+        if let Some(shmid) = shm_manager.get_shmid_by_key(key) {
+            let shm_inner = shm_manager.get_inner_by_shmid(shmid).ok_or(LinuxError::EINVAL)?;
+            let mut shm_inner = shm_inner.lock();
+            return shm_inner.try_update(size, mapping_flags, cur_pid);
+        }
     }
 
     // Create a new shm_inner
@@ -399,7 +395,7 @@ pub fn sys_shmat(shmid: i32, addr: usize, shmflg: u32) -> LinuxResult<isize> {
 
     let mut shm_manager = SHM_MANAGER.lock();
     shm_manager.insert_shmid_vaddr(cur_pid, shm_inner.shmid, start_addr);
-    debug!("[SYS_SHMGET]: Process {} alloc shm addr: {:#x}, size: {}, mapping_flags: {:#x?}", 
+    info!("Process {} alloc shm virt addr start: {:#x}, size: {}, mapping_flags: {:#x?}", 
                         cur_pid, start_addr.as_usize(), length, mapping_flags);
                         
     // map the virtual address range to the physical address
@@ -466,26 +462,18 @@ pub fn sys_shmctl(shmid: i32, cmd: u32, buf: UserPtr<ShmidDs>) -> LinuxResult<is
     let mut shm_inner = shm_inner.lock();
 
     if cmd == IPC_SET {
-        let shmid_ds = buf.get_as_mut()?;
-        shm_inner.shmid_ds = *shmid_ds;
-        error!("IPC SET segsz = {}", shmid_ds.shm_segsz);
-    }
-    
-    if cmd == IPC_STAT {
-        let shmid_ds = buf.get_as_mut()?;
-        *shmid_ds = shm_inner.shmid_ds;
-        let tmp = shmid_ds.shm_perm;
-        error!("ctl perm(kernel): {}, {}, {}, {}, {}", tmp.uid, tmp.gid, tmp.cuid, tmp.cgid, tmp.mode);
-        error!("ctl stat size = {}", shm_inner.shmid_ds.shm_segsz);
+        shm_inner.shmid_ds = unsafe { *buf.get()? };
+    } else if cmd == IPC_STAT {
+        if let Some(shmid_ds) = buf.nullable(UserPtr::get)? {
+            unsafe { *shmid_ds = shm_inner.shmid_ds };
+        }
+    } else if cmd == IPC_RMID {
+        shm_inner.rmid = true;
+    } else {
+        return Err(LinuxError::EINVAL);
     }
 
     shm_inner.shmid_ds.shm_ctime = monotonic_time_nanos() as __kernel_time_t;
-
-    if cmd == IPC_STAT {
-        shm_inner.rmid = true;
-        return Ok(0)
-    }
-
     Ok(0)
 }
 
