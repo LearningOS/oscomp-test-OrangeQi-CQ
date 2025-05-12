@@ -153,7 +153,7 @@ fn handle_syscall(tf: &mut TrapFrame, syscall_num: usize) -> isize {
         Sysno::shmctl => sys_shmctl(tf.arg0() as _, tf.arg1() as _, tf.arg2().into()),
         Sysno::shmdt => sys_shmdt(tf.arg0() as _,),
         _ => {
-            warn!("Unimplemented syscall: {}", sysno);
+            error!("Unimplemented syscall: {}", sysno);
             Err(LinuxError::ENOSYS)
         }
     };

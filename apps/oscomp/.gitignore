@@ -1,5 +1,2 @@
-#testcase_list
-bak_libc_list.sh
-bak_basic_list.sh
-bak_testcase_list.sh
+testcase_list
 *.out
