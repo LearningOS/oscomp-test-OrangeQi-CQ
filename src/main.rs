@@ -23,32 +23,32 @@ fn run_single_testcase(testcase: &str) {
     error!("User task {} exited with code: {:?}", testcase, exit_code);
 }
 
-// fn list_all_testcases() {
-//     let testcases = option_env!("AX_TESTCASES_LIST")
-//         .unwrap_or_else(|| "Please specify the testcases list by making user_apps")
-//         .split(',')
-//         .filter(|&x| !x.is_empty());
+fn list_all_testcases() {
+    let testcases = option_env!("AX_TESTCASES_LIST")
+        .unwrap_or_else(|| "Please specify the testcases list by making user_apps")
+        .split(',')
+        .filter(|&x| !x.is_empty());
 
-//     for testcase in testcases {
-//         error!("{} ", testcase);
-//     }
-// }
+    for testcase in testcases {
+        error!("{} ", testcase);
+    }
+}
 
-// fn run_all_testcases() {
-//     let testcases = option_env!("AX_TESTCASES_LIST")
-//         .unwrap_or_else(|| "Please specify the testcases list by making user_apps")
-//         .split(',')
-//         .filter(|&x| !x.is_empty());
+fn run_all_testcases() {
+    let testcases = option_env!("AX_TESTCASES_LIST")
+        .unwrap_or_else(|| "Please specify the testcases list by making user_apps")
+        .split(',')
+        .filter(|&x| !x.is_empty());
 
-//     for testcase in testcases {
-//         let args = testcase
-//             .split_ascii_whitespace()
-//             .map(Into::into)
-//             .collect::<Vec<_>>();
-//         let exit_code = entry::run_user_app(&args, &[]);
-//         error!("User task {} exited with code: {:?}", testcase, exit_code);
-//     }
-// }
+    for testcase in testcases {
+        let args = testcase
+            .split_ascii_whitespace()
+            .map(Into::into)
+            .collect::<Vec<_>>();
+        let exit_code = entry::run_user_app(&args, &[]);
+        error!("User task {} exited with code: {:?}", testcase, exit_code);
+    }
+}
 
 #[unsafe(no_mangle)]
 fn main() {
@@ -73,8 +73,14 @@ fn main() {
     //     error!("User task {:?} exited with code: {:?}", args, exit_code);
     // }
     
-    // list_all_testcases();
-    // run_all_testcases();
-    run_single_testcase("/musl/entry-static.exe fscanf");
+    list_all_testcases();
+    run_all_testcases();
+    
+    // run_single_testcase("test_pipe");
+    // run_single_testcase("/musl/entry-static.exe fscanf ");
+
+
+
+    // run_single_testcase("/musl/entry-static.exe fscanf");
     // run_single_testcase("/musl/entry-static.exe argv");
 }
