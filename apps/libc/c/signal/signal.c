@@ -24,7 +24,7 @@ static void signal_handler(int signum) {
     return;
   }
   // This should be blocked and won't cause recursion
-  kill(0, SIGTERM);
+  kill(getpid(), SIGTERM);
   printf("End, count=%d\n", count);
 }
 
@@ -32,12 +32,12 @@ void test_sigaction() {
   struct sigaction sa = {0};
   sa.sa_handler = signal_handler;
   sigaction(SIGTERM, &sa, NULL);
-  kill(0, SIGTERM);
+  kill(getpid(), SIGTERM);
   puts("test_sigaction ok1");
 
   sa.sa_handler = (void (*)(int))1;
   sigaction(SIGTERM, &sa, NULL);
-  kill(0, SIGTERM);
+  kill(getpid(), SIGTERM);
   puts("test_sigaction ok2");
 
   sa.sa_handler = (void (*)(int))0;
@@ -49,7 +49,7 @@ void test_sigprocmask() {
   sigemptyset(&set);
   sigaddset(&set, SIGTERM);
   sigprocmask(SIG_BLOCK, &set, NULL);
-  kill(0, SIGTERM);
+  kill(getpid(), SIGTERM);
 
   sigpending(&set2);
   if (sigismember(&set2, SIGTERM)) {

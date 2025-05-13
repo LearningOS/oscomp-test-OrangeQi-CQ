@@ -3,7 +3,7 @@ build_mode = release
 log_level = off
 
 Hello, World!
-Sleeping for 5 seconds...
+Sleeping for 2 seconds...
 Done!
 
 test_term ok

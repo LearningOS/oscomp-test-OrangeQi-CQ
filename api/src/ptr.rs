@@ -173,15 +173,6 @@ impl<T> PtrWrapper<T> for UserPtr<T> {
 }
 
 impl<T> UserPtr<T> {
-    pub fn get_as_mut_slice(self, len: usize) -> LinuxResult<&'static mut [T]> {
-        check_region(
-            self.address(),
-            Layout::array::<T>(len).unwrap(),
-            Self::ACCESS_FLAGS,
-        )?;
-        Ok(unsafe { core::slice::from_raw_parts_mut(self.0, len) })
-    }
-    
     /// Get the pointer as `&mut [T]`, terminated by a null value, validating
     /// the memory region.
     pub fn get_as_null_terminated(self) -> LinuxResult<&'static mut [T]>
@@ -221,15 +212,6 @@ impl<T> PtrWrapper<T> for UserConstPtr<T> {
 }
 
 impl<T> UserConstPtr<T> {
-    pub fn get_as_slice(self, len: usize) -> LinuxResult<&'static [T]> {
-        check_region(
-            self.address(),
-            Layout::array::<T>(len).unwrap(),
-            Self::ACCESS_FLAGS,
-        )?;
-        Ok(unsafe { core::slice::from_raw_parts(self.0, len) })
-    }
-    
     /// Get the pointer as `&[T]`, terminated by a null value, validating the
     /// memory region.
     pub fn get_as_null_terminated(self) -> LinuxResult<&'static [T]>
