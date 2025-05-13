@@ -73,7 +73,7 @@ fn main() {
     //     error!("User task {:?} exited with code: {:?}", args, exit_code);
     // }
     
-    list_all_testcases();
+    // list_all_testcases();
     run_all_testcases();
     
     // run_single_testcase("test_pipe");
