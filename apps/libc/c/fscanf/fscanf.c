@@ -110,9 +110,18 @@ int main(void)
 
 	// TEST(i, write(p[1], "hello, world\n", 13), 13, "write error %d!=%d (%s)");
 	TEST(i, write(p[1], "hello, world\n", 13), 13, "write error %d!=%d (%s)");
-	read(p[0], b, 13);
-	
 	// TEST(i, fscanf(f, "%s %[own]", a, b), 2, "got %d fields, expected %d");
+	
+	printf("&a = %p\n", a);
+	fscanf(f, "%c", a);
+	printf("a = %c\n", a[0]);
+	// printf("b = %s\n", b);
+	
+	// read(p[0], b, 12);
+	// for (int i = 0; i < 12; i++) {
+	// 	printf("%c", b[i]);
+	// }
+	
 	
 	
 	// TEST_S(a, "hello,", "wrong result for %s");
@@ -202,3 +211,31 @@ int main(void)
 
 	return 0;
 }
+
+
+
+
+// #include <stdio.h>
+
+// int main() {
+//     FILE *file = fopen("data.txt", "w+");
+//     if (!file) {
+//         perror("文件打开失败");
+//         return 1;
+//     }
+
+//     int num;
+//     char str[20];
+//     float val;
+
+//     // 假设文件内容为: "42 Hello 3.14"
+//     int ret = fscanf(file, "%d %s %f", &num, str, &val);
+//     if (ret == 3) {
+//         printf("读取成功: %d, %s, %.2f\n", num, str, val);
+//     } else {
+//         printf("读取失败，匹配到 %d 个字段\n", ret);
+//     }
+
+//     fclose(file);
+//     return 0;
+// }

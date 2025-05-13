@@ -16,6 +16,9 @@ void test_pipe(void){
     assert(ret != -1);
     const char *data = "  Write to pipe successfully.\n";
     cpid = fork();
+
+    printf("buf addr %p\n", buf);
+    
     printf("cpid: %d\n", cpid);
     if(cpid > 0){
         close(fd[1]);
@@ -24,7 +27,7 @@ void test_pipe(void){
         write(1, "\n", 1);
         close(fd[0]);
         wait(NULL);
-        }else{
+    } else {
         close(fd[0]);
         write(fd[1], data, strlen(data));
         close(fd[1]);

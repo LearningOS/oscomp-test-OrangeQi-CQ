@@ -36,17 +36,20 @@ impl Eq for iovec {}
 
 pub fn sys_read(fd: i32, buf: UserPtr<c_void>, count: usize) -> LinuxResult<isize> {
     let buf = buf.get_as_bytes(count)?;
+    error!("buf  = {:#x}", buf as u64);
     Ok(api::sys_read(fd, buf, count))
 }
 
 pub fn sys_readv(fd: c_int, iov: UserPtr<iovec>, iocnt: usize) -> LinuxResult<isize> {
+    // let buf = iov.get_as_bytes(iocnt)?;
+    // error!("buf  = {:#x}", buf as u64);
+    
     if !(0..=1024).contains(&iocnt) {
         return Err(LinuxError::EINVAL);
     }
 
     let iovs = iov.get_as_mut_slice(iocnt)?;
     let mut ret = 0;
-
     
     for iov in iovs {
         if iov.iov_len == 0 {
